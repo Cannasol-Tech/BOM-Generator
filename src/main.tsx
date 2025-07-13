@@ -2391,10 +2391,12 @@ const Header = ({
           {/* Logo and Title */}
           <div className="flex items-center space-x-4">
             <div className="flex items-center space-x-3">
-              {/* Cannasol Logo Placeholder - Replace with actual logo */}
-              <div className="w-12 h-12 bg-gradient-to-br from-green-600 to-blue-600 rounded-lg flex items-center justify-center shadow-md">
-                <Building className="text-white" size={24} />
-              </div>
+              {/* Cannasol Logo */}
+              <img 
+                src="/src/smallicon.png" 
+                alt="Cannasol Technologies" 
+                className="w-12 h-12 rounded-lg shadow-md"
+              />
               <div>
                 <h1 className="text-xl font-bold text-gray-900">Cannasol Technologies</h1>
                 <p className="text-sm text-green-700 font-medium">BOM Generator</p>
