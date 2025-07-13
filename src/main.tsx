@@ -3341,10 +3341,6 @@ const BOMManager = () => {
               New BOM
             </Button>
             <DigikeyShoppingList bomData={bomData} />
-            <Button variant="primary" onClick={handleAddItem}>
-              <Plus size={16} />
-              Add Item
-            </Button>
           </div>
         </div>
 
