@@ -30,14 +30,68 @@ import {
   PlusCircle,
   Eye,
   EyeOff,
-  ChevronDown,
-  ChevronUp,
-  RotateCcw,
-  Layers,
   Database,
-  BookOpen,
-  Target
+  Layers,
+  Target,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
+
+// Type definitions
+interface BOMItem {
+  id: number;
+  partNumber: string;
+  description: string;
+  category: string;
+  quantity: number;
+  unit: string;
+  unitCost: number;
+  extendedCost: number;
+  supplier: string;
+  leadTime: number;
+  revision: string;
+  status: string;
+  requiredFor: string;
+  digikeyPN: string;
+  manufacturerPN: string;
+  nlpParsed?: boolean;
+  confidence?: number;
+  originalInput?: string;
+  fromInventory?: boolean;
+  specifications?: {
+    voltage?: string;
+    current?: string;
+    power?: string;
+    tolerance?: string;
+    temperature?: string;
+    package?: string;
+    value?: string;
+    dielectric?: string;
+    [key: string]: string | undefined;
+  };
+}
+
+interface BOMData {
+  items: BOMItem[];
+  metadata?: {
+    version?: string;
+    created?: string;
+    updated?: string;
+  };
+}
+
+interface Template {
+  id: string;
+  name: string;
+  description: string;
+  parts: {
+    category: string;
+    description: string;
+    quantity: number;
+    unitCost: number;
+    supplier: string;
+  }[];
+}
 
 // BOM Storage Service
 const BOMStorage = {
@@ -45,7 +99,7 @@ const BOMStorage = {
   INVENTORY_KEY: 'cannasol-inventory-data',
   TEMPLATES_KEY: 'cannasol-templates-data',
   
-  save: (bomData) => {
+  save: (bomData: BOMItem[]) => {
     try {
       const saveData = {
         bomData,
@@ -74,7 +128,7 @@ const BOMStorage = {
     }
   },
 
-  saveInventory: (inventoryData) => {
+  saveInventory: (inventoryData: BOMItem[]) => {
     try {
       localStorage.setItem(BOMStorage.INVENTORY_KEY, JSON.stringify(inventoryData));
       return true;
@@ -94,7 +148,7 @@ const BOMStorage = {
     }
   },
 
-  saveTemplates: (templates) => {
+  saveTemplates: (templates: Template[]) => {
     try {
       localStorage.setItem(BOMStorage.TEMPLATES_KEY, JSON.stringify(templates));
       return true;
@@ -114,7 +168,7 @@ const BOMStorage = {
     }
   },
   
-  exportJSON: (bomData, filename = 'cannasol-bom-export.json') => {
+  exportJSON: (bomData: BOMItem[], filename = 'cannasol-bom-export.json') => {
     const exportData = {
       exportDate: new Date().toISOString(),
       version: '2.0',
@@ -133,11 +187,11 @@ const BOMStorage = {
     URL.revokeObjectURL(url);
   },
   
-  importJSON: (file, callback) => {
+  importJSON: (file: File, callback: (data: BOMItem[]) => void) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        const importData = JSON.parse(e.target.result);
+        const importData = JSON.parse(e.target?.result as string);
         const bomData = importData.bomData || importData;
         callback(bomData);
       } catch (error) {
@@ -175,7 +229,7 @@ const BOMStorage = {
 
 // CSV/Excel Import Service
 const ImportService = {
-  parseCSV: (csvText) => {
+  parseCSV: (csvText: string) => {
     const lines = csvText.split('\n').filter(line => line.trim());
     if (lines.length < 2) return [];
 
@@ -185,7 +239,7 @@ const ImportService = {
     for (let i = 1; i < lines.length; i++) {
       const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
       if (values.length === headers.length) {
-        const row = {};
+        const row: { [key: string]: string } = {};
         headers.forEach((header, index) => {
           row[header] = values[index];
         });
@@ -412,7 +466,7 @@ const NLPService = {
     'Cable': ['cable', 'wire', 'harness', 'ribbon']
   },
 
-  parseNaturalLanguage: (input, existingCategories = [], existingSuppliers = []) => {
+  parseNaturalLanguage: (input: string, existingCategories: string[] = [], existingSuppliers: string[] = []) => {
     const text = input.toLowerCase().trim();
     
     // Extract quantity if mentioned
@@ -441,7 +495,7 @@ const NLPService = {
     if (category === 'Other') {
       // First check existing categories for partial matches
       for (const existingCat of existingCategories) {
-        if (text.includes(existingCat.toLowerCase())) {
+        if (typeof existingCat === 'string' && text.includes(existingCat.toLowerCase())) {
           category = existingCat;
           break;
         }
@@ -480,7 +534,7 @@ const NLPService = {
     // If no hardcoded match, check existing suppliers
     if (!supplier) {
       for (const existingSup of existingSuppliers) {
-        if (text.includes(existingSup.toLowerCase())) {
+        if (typeof existingSup === 'string' && text.includes(existingSup.toLowerCase())) {
           supplier = existingSup;
           break;
         }
@@ -502,8 +556,8 @@ const NLPService = {
     };
   },
 
-  getCategoryFromType: (type) => {
-    const mapping = {
+  getCategoryFromType: (type: string) => {
+    const mapping: { [key: string]: string } = {
       'resistor': 'Resistor',
       'capacitor': 'Capacitor',
       'inductor': 'Inductor',
@@ -514,8 +568,8 @@ const NLPService = {
     return mapping[type] || 'Other';
   },
 
-  extractSpecifications: (type, match) => {
-    const specs = {};
+  extractSpecifications: (type: string, match: RegExpMatchArray) => {
+    const specs: { [key: string]: string } = {};
     
     switch (type) {
       case 'resistor':
@@ -2229,13 +2283,13 @@ const DigikeyShoppingList = ({ bomData }) => {
 
 // Main BOM Manager
 const BOMManager = () => {
-  const [bomData, setBomData] = useState([]);
-  const [filteredData, setFilteredData] = useState([]);
-  const [inventory, setInventory] = useState([]);
-  const [lastSaved, setLastSaved] = useState(null);
-  const [editingCell, setEditingCell] = useState(null);
+  const [bomData, setBomData] = useState<BOMItem[]>([]);
+  const [filteredData, setFilteredData] = useState<BOMItem[]>([]);
+  const [inventory, setInventory] = useState<any[]>([]);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [editingCell, setEditingCell] = useState<{itemId: number; field: string} | null>(null);
   const [editValue, setEditValue] = useState('');
-  const [selectedItems, setSelectedItems] = useState(new Set());
+  const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
   
   // Dialog states
   const [showBulkAdd, setShowBulkAdd] = useState(false);
