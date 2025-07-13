@@ -2385,26 +2385,27 @@ const Header = ({
   };
 
   return (
-    <div className="bg-white border-b-2 border-gray-200 shadow-sm">
+    <div className="bg-white border-b-2 border-green-200 shadow-sm">
       <div className="max-w-7xl mx-auto px-4 py-4">
         <div className="flex items-center justify-between">
           {/* Logo and Title */}
           <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <div className="w-10 h-10 bg-gray-900 rounded-lg flex items-center justify-center">
-                <Package className="text-white" size={24} />
+            <div className="flex items-center space-x-3">
+              {/* Cannasol Logo Placeholder - Replace with actual logo */}
+              <div className="w-12 h-12 bg-gradient-to-br from-green-600 to-blue-600 rounded-lg flex items-center justify-center shadow-md">
+                <Building className="text-white" size={24} />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-gray-900">BOM Generator</h1>
-                <p className="text-sm text-gray-600">Cannasol Technologies</p>
+                <h1 className="text-xl font-bold text-gray-900">Cannasol Technologies</h1>
+                <p className="text-sm text-green-700 font-medium">BOM Generator</p>
               </div>
             </div>
             
             {/* Current BOM Name */}
             {currentBOMName && (
-              <div className="hidden md:flex items-center space-x-2 px-3 py-1.5 bg-blue-50 rounded-lg border border-blue-200">
-                <FolderOpen size={16} className="text-blue-600" />
-                <span className="text-sm font-medium text-blue-800">{currentBOMName}</span>
+              <div className="hidden md:flex items-center space-x-2 px-3 py-1.5 bg-green-50 rounded-lg border border-green-200">
+                <FolderOpen size={16} className="text-green-600" />
+                <span className="text-sm font-medium text-green-800">{currentBOMName}</span>
               </div>
             )}
           </div>
@@ -2555,7 +2556,7 @@ const SearchAndFilter = ({
               placeholder="Search parts, descriptions, or part numbers..."
               value={searchTerm}
               onChange={(e) => handleSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500"
             />
           </div>
         </div>
@@ -2565,7 +2566,7 @@ const SearchAndFilter = ({
           <select
             value={categoryFilter}
             onChange={(e) => handleCategoryFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500"
           >
             <option value="">All Categories</option>
             {uniqueCategories.map(category => (
@@ -2576,7 +2577,7 @@ const SearchAndFilter = ({
           <select
             value={supplierFilter}
             onChange={(e) => handleSupplierFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500"
           >
             <option value="">All Suppliers</option>
             {uniqueSuppliers.map(supplier => (
@@ -3289,7 +3290,7 @@ const BOMManager = () => {
     return (
       <div
         onClick={() => handleCellClick(item.id, field, value)}
-        className={`cursor-pointer hover:bg-blue-50 px-2 py-1 rounded transition-colors ${className} ${
+        className={`cursor-pointer hover:bg-green-50 px-2 py-1 rounded transition-colors ${className} ${
           value === '' || value === null || value === undefined ? 'text-gray-400 italic' : ''
         }`}
         title="Click to edit"
@@ -3330,7 +3331,7 @@ const BOMManager = () => {
           <div className="flex items-center space-x-4">
             <h2 className="text-2xl font-semibold text-gray-900">Bill of Materials</h2>
             {currentBOMName && (
-              <Badge variant="info" className="text-sm">
+              <Badge variant="info" className="text-sm bg-green-100 text-green-800 border-green-300">
                 {currentBOMName}
               </Badge>
             )}
@@ -3386,14 +3387,14 @@ const BOMManager = () => {
               </div>
             </div>
           </Card>
-          <Card className="p-6 bg-blue-50">
+          <Card className="p-6 bg-green-50">
             <div className="flex items-center space-x-3">
-              <CheckCircle className="text-blue-600" size={24} />
+              <CheckCircle className="text-green-600" size={24} />
               <div>
-                <p className="text-2xl font-semibold text-blue-900">{selectedItems.size}</p>
-                <p className="text-sm text-blue-600">Selected</p>
+                <p className="text-2xl font-semibold text-green-900">{selectedItems.size}</p>
+                <p className="text-sm text-green-600">Selected</p>
                 {selectedItems.size > 0 && (
-                  <p className="text-xs text-blue-600">${selectedCost.toFixed(2)}</p>
+                  <p className="text-xs text-green-600">${selectedCost.toFixed(2)}</p>
                 )}
               </div>
             </div>
@@ -3411,13 +3412,13 @@ const BOMManager = () => {
 
         {/* Bulk Actions */}
         {selectedItems.size > 0 && (
-          <Card className="p-4 mb-4 bg-blue-50 border-blue-200">
+          <Card className="p-4 mb-4 bg-green-50 border-green-200">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3">
-                <span className="text-sm font-medium text-blue-800">
+                <span className="text-sm font-medium text-green-800">
                   {selectedItems.size} items selected
                 </span>
-                <span className="text-sm text-blue-600">
+                <span className="text-sm text-green-600">
                   Total: ${selectedCost.toFixed(2)}
                 </span>
               </div>
@@ -3442,25 +3443,25 @@ const BOMManager = () => {
         <Card className="relative">
           <div className="overflow-x-auto">
             {/* Table toolbar */}
-            <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
+            <div className="flex items-center justify-between px-4 py-3 bg-green-50 border-b border-green-200">
               <div className="flex items-center space-x-2">
-                <Package size={16} className="text-gray-500" />
-                <span className="text-sm font-medium text-gray-700">
+                <Package size={16} className="text-green-600" />
+                <span className="text-sm font-medium text-green-800">
                   {filteredData.length} items
                 </span>
               </div>
               <div className="flex items-center space-x-2">
                 <button
                   onClick={handleAddItem}
-                  className="flex items-center space-x-1 px-3 py-1.5 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded-md transition-colors"
+                  className="flex items-center space-x-1 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
                 >
                   <Plus size={14} />
                   <span>Add Item</span>
                 </button>
               </div>
             </div>
-            <div className="mb-2 p-3 bg-blue-50 border-l-4 border-blue-400">
-              <p className="text-sm text-blue-700">
+            <div className="mb-2 p-3 bg-green-50 border-l-4 border-green-500">
+              <p className="text-sm text-green-800">
                 💡 <strong>Features:</strong> Click cells to edit • Get auto-suggestions for categories/suppliers • Select items for bulk operations • Use search/filter
               </p>
             </div>
@@ -3495,7 +3496,7 @@ const BOMManager = () => {
                   <tr 
                     key={item.id} 
                     className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} ${
-                      selectedItems.has(item.id) ? 'bg-blue-50 border-l-4 border-l-blue-400' : ''
+                      selectedItems.has(item.id) ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''
                     } hover:bg-gray-100 transition-colors`}
                   >
                     <td className="px-3 py-1 text-center">
@@ -3591,7 +3592,7 @@ const BOMManager = () => {
                         </div>
                         <button
                           onClick={handleAddItem}
-                          className="flex items-center space-x-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-md transition-colors"
+                          className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
                         >
                           <Plus size={16} />
                           <span>Add First Item</span>
@@ -3662,7 +3663,7 @@ const BOMManager = () => {
       />
       
       <button 
-        className="fixed bottom-6 right-6 w-12 h-12 bg-gray-900 hover:bg-gray-800 text-white rounded-full shadow-lg flex items-center justify-center transition-colors"
+        className="fixed bottom-6 right-6 w-12 h-12 bg-gradient-to-br from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 text-white rounded-full shadow-lg flex items-center justify-center transition-all transform hover:scale-105"
         onClick={() => window.open('https://cannasoltechnologies.com', '_blank')}
         title="Cannasol Technologies Website"
       >
