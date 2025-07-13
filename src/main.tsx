@@ -3444,16 +3444,25 @@ const BOMManager = () => {
 
         {/* BOM Table */}
         <Card className="relative">
-          {/* Floating Add Button */}
-          <button
-            onClick={handleAddItem}
-            className="absolute top-4 right-4 z-10 w-10 h-10 bg-green-500 hover:bg-green-600 text-white rounded-full shadow-lg flex items-center justify-center transition-all hover:scale-105"
-            title="Add new item"
-          >
-            <Plus size={20} />
-          </button>
-          
           <div className="overflow-x-auto">
+            {/* Table toolbar */}
+            <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
+              <div className="flex items-center space-x-2">
+                <Package size={16} className="text-gray-500" />
+                <span className="text-sm font-medium text-gray-700">
+                  {filteredData.length} items
+                </span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={handleAddItem}
+                  className="flex items-center space-x-1 px-3 py-1.5 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded-md transition-colors"
+                >
+                  <Plus size={14} />
+                  <span>Add Item</span>
+                </button>
+              </div>
+            </div>
             <div className="mb-2 p-3 bg-blue-50 border-l-4 border-blue-400">
               <p className="text-sm text-blue-700">
                 💡 <strong>Features:</strong> Click cells to edit • Get auto-suggestions for categories/suppliers • Select items for bulk operations • Use search/filter
@@ -3574,25 +3583,27 @@ const BOMManager = () => {
                   </tr>
                 ))}
                 
-                {/* Add New Item Row */}
-                <tr className="bg-green-50 border border-green-200 hover:bg-green-100 transition-colors">
-                  <td className="px-3 py-2 text-center">
-                    <button
-                      onClick={handleAddItem}
-                      className="w-6 h-6 bg-green-500 hover:bg-green-600 text-white rounded-full flex items-center justify-center transition-colors"
-                      title="Add new item"
-                    >
-                      <Plus size={12} />
-                    </button>
-                  </td>
-                  <td 
-                    colSpan={8} 
-                    className="px-3 py-2 text-center text-sm text-green-700 font-medium cursor-pointer"
-                    onClick={handleAddItem}
-                  >
-                    Click here or the + button to add a new item
-                  </td>
-                </tr>
+                {/* Empty state */}
+                {filteredData.length === 0 && (
+                  <tr>
+                    <td colSpan={9} className="px-3 py-12 text-center">
+                      <div className="flex flex-col items-center space-y-3">
+                        <Package size={48} className="text-gray-300" />
+                        <div className="text-gray-500">
+                          <p className="text-lg font-medium">No items found</p>
+                          <p className="text-sm">Add your first component to get started</p>
+                        </div>
+                        <button
+                          onClick={handleAddItem}
+                          className="flex items-center space-x-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-md transition-colors"
+                        >
+                          <Plus size={16} />
+                          <span>Add First Item</span>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
                 
                 <tr className="bg-gray-100 font-semibold border-t-2 border-gray-300">
                   <td></td>
