@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excel Import Test - BOM Generator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            margin: 20px 0;
+            background: #fafafa;
+        }
+        .upload-area.dragover {
+            border-color: #007bff;
+            background: #e7f3ff;
+        }
+        .file-input {
+            margin: 10px 0;
+        }
+        .results {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            border-left: 4px solid #007bff;
+        }
+        .error {
+            background: #f8d7da;
+            border-left-color: #dc3545;
+            color: #721c24;
+        }
+        .success {
+            background: #d4edda;
+            border-left-color: #28a745;
+            color: #155724;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .debug-info {
+            font-family: monospace;
+            font-size: 12px;
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            white-space: pre-wrap;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .test-buttons {
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Excel Import Test - BOM Generator</h1>
+        <p><strong>Purpose:</strong> Test and debug Excel/CSV import functionality in isolation</p>
+        
+        <div class="test-buttons">
+            <button onclick="generateTestCSV()">📄 Generate Test CSV</button>
+            <button onclick="generateTestExcelData()">📊 Generate Test Excel Data</button>
+            <button onclick="clearResults()">🗑️ Clear Results</button>
+        </div>
+
+        <div class="upload-area" id="uploadArea">
+            <h3>📂 Drop Excel/CSV file here or click to browse</h3>
+            <p>Supported formats: .xlsx, .xls, .csv</p>
+            <input type="file" id="fileInput" class="file-input" accept=".csv,.xlsx,.xls" style="display: none;">
+            <button onclick="document.getElementById('fileInput').click()">Choose File</button>
+        </div>
+
+        <div id="results"></div>
+    </div>
+
+    <!-- Include SheetJS library for Excel parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <script>
+        // Reproduce the exact ImportService from your BOM Generator
+        const ImportService = {
+            parseCSV: (csvText) => {
+                console.log('📄 Parsing CSV:', csvText.substring(0, 100) + '...');
+                
+                const lines = csvText.split('\n').filter(line => line.trim());
+                if (lines.length < 2) {
+                    throw new Error('CSV file must have at least 2 lines (header + data)');
+                }
+
+                const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+                console.log('📋 Headers found:', headers);
+                
+                const data = [];
+
+                for (let i = 1; i < lines.length; i++) {
+                    const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
+                    const row = {};
+                    
+                    headers.forEach((header, index) => {
+                        row[header] = values[index] || '';
+                    });
+                    
+                    data.push(row);
+                }
+
+                console.log('✅ CSV parsed successfully:', data);
+                return data;
+            },
+
+            parseExcel: async (file) => {
+                console.log('📊 Parsing Excel file:', file.name, file.type, file.size);
+                
+                // This was the issue - your original code was just simulating Excel parsing
+                // Let's implement actual Excel parsing with SheetJS
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    
+                    reader.onload = (e) => {
+                        try {
+                            console.log('📖 File loaded, parsing with SheetJS...');
+                            
+                            const data = new Uint8Array(e.target.result);
+                            const workbook = XLSX.read(data, { type: 'array' });
+                            
+                            console.log('📚 Workbook sheets:', workbook.SheetNames);
+                            
+                            // Get the first sheet
+                            const sheetName = workbook.SheetNames[0];
+                            const worksheet = workbook.Sheets[sheetName];
+                            
+                            // Convert to JSON
+                            const jsonData = XLSX.utils.sheet_to_json(worksheet, { 
+                                header: 1,  // Use first row as header
+                                defval: ''   // Default value for empty cells
+                            });
+                            
+                            console.log('📊 Raw Excel data:', jsonData);
+                            
+                            if (jsonData.length < 2) {
+                                throw new Error('Excel file must have at least 2 rows (header + data)');
+                            }
+                            
+                            // Convert array format to object format
+                            const headers = jsonData[0];
+                            const processedData = [];
+                            
+                            for (let i = 1; i < jsonData.length; i++) {
+                                const row = {};
+                                headers.forEach((header, index) => {
+                                    row[header] = jsonData[i][index] || '';
+                                });
+                                processedData.push(row);
+                            }
+                            
+                            console.log('✅ Excel parsed successfully:', processedData);
+                            resolve(processedData);
+                            
+                        } catch (error) {
+                            console.error('❌ Excel parsing error:', error);
+                            reject(error);
+                        }
+                    };
+                    
+                    reader.onerror = () => {
+                        const error = new Error('Failed to read file');
+                        console.error('❌ File reading error:', error);
+                        reject(error);
+                    };
+                    
+                    reader.readAsArrayBuffer(file);
+                });
+            },
+
+            normalizeImportedData: (rawData) => {
+                console.log('🔄 Normalizing imported data:', rawData);
+                
+                return rawData.map((row, index) => {
+                    // Map common column names to our expected format
+                    const mapping = {
+                        'part number': 'partNumber',
+                        'part_number': 'partNumber',
+                        'partnumber': 'partNumber',
+                        'p/n': 'partNumber',
+                        'description': 'description',
+                        'desc': 'description',
+                        'part description': 'description',
+                        'category': 'category',
+                        'type': 'category',
+                        'quantity': 'quantity',
+                        'qty': 'quantity',
+                        'unit cost': 'unitCost',
+                        'cost': 'unitCost',
+                        'price': 'unitCost',
+                        'supplier': 'supplier',
+                        'vendor': 'supplier',
+                        'manufacturer': 'supplier'
+                    };
+                    
+                    const normalizedRow = {
+                        id: Date.now() + index,
+                        partNumber: '',
+                        description: '',
+                        category: 'Other',
+                        quantity: 1,
+                        unit: 'EA',
+                        unitCost: 0,
+                        extendedCost: 0,
+                        supplier: '',
+                        leadTime: 1,
+                        revision: 'A',
+                        status: 'Active',
+                        requiredFor: 'Base System',
+                        digikeyPN: '',
+                        manufacturerPN: ''
+                    };
+                    
+                    // Map the imported data to our format
+                    Object.keys(row).forEach(key => {
+                        const normalizedKey = mapping[key.toLowerCase()] || key;
+                        if (normalizedRow.hasOwnProperty(normalizedKey)) {
+                            let value = row[key];
+                            
+                            // Handle numeric fields
+                            if (normalizedKey === 'quantity') {
+                                value = parseInt(value) || 1;
+                            } else if (normalizedKey === 'unitCost') {
+                                value = parseFloat(value) || 0;
+                            }
+                            
+                            normalizedRow[normalizedKey] = value;
+                        }
+                    });
+                    
+                    // Calculate extended cost
+                    normalizedRow.extendedCost = normalizedRow.quantity * normalizedRow.unitCost;
+                    
+                    return normalizedRow;
+                });
+            }
+        };
+
+        // Test data generators
+        function generateTestCSV() {
+            const csvContent = `Part Number,Description,Category,Quantity,Unit Cost,Supplier
+R-001,10K Resistor 1% 1/4W,Resistor,50,0.12,DigiKey
+C-001,100nF Ceramic Capacitor,Capacitor,25,0.18,DigiKey
+IC-001,STM32F407VGT6 Microcontroller,IC,1,12.50,DigiKey
+HW-001,M3x10 Socket Head Screw,Hardware,20,0.25,McMaster-Carr`;
+
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'test-bom.csv';
+            link.click();
+            URL.revokeObjectURL(url);
+            
+            showResult('✅ Test CSV generated and downloaded!', 'success');
+        }
+
+        function generateTestExcelData() {
+            // Create a simple Excel file using SheetJS
+            const data = [
+                ['Part Number', 'Description', 'Category', 'Quantity', 'Unit Cost', 'Supplier'],
+                ['R-001', '10K Resistor 1% 1/4W', 'Resistor', 50, 0.12, 'DigiKey'],
+                ['C-001', '100nF Ceramic Capacitor', 'Capacitor', 25, 0.18, 'DigiKey'],
+                ['IC-001', 'STM32F407VGT6 Microcontroller', 'IC', 1, 12.50, 'DigiKey'],
+                ['HW-001', 'M3x10 Socket Head Screw', 'Hardware', 20, 0.25, 'McMaster-Carr']
+            ];
+            
+            const worksheet = XLSX.utils.aoa_to_sheet(data);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, 'BOM');
+            
+            XLSX.writeFile(workbook, 'test-bom.xlsx');
+            
+            showResult('✅ Test Excel file generated and downloaded!', 'success');
+        }
+
+        // File handling
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+
+        uploadArea.addEventListener('click', () => fileInput.click());
+        uploadArea.addEventListener('dragover', handleDragOver);
+        uploadArea.addEventListener('drop', handleDrop);
+        fileInput.addEventListener('change', handleFileSelect);
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                processFile(files[0]);
+            }
+        }
+
+        function handleFileSelect(e) {
+            const files = e.target.files;
+            if (files.length > 0) {
+                processFile(files[0]);
+            }
+        }
+
+        async function processFile(file) {
+            console.log('🔍 Processing file:', file);
+            
+            showResult(`📂 Processing file: ${file.name} (${file.size} bytes)`, 'info');
+            
+            try {
+                let rawData = [];
+                
+                if (file.name.endsWith('.csv')) {
+                    const text = await file.text();
+                    rawData = ImportService.parseCSV(text);
+                } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+                    rawData = await ImportService.parseExcel(file);
+                } else {
+                    throw new Error('Unsupported file format. Use .csv, .xlsx, or .xls');
+                }
+
+                const normalizedData = ImportService.normalizeImportedData(rawData);
+                
+                displayResults(rawData, normalizedData);
+                
+            } catch (error) {
+                console.error('❌ Processing error:', error);
+                showResult(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        function displayResults(rawData, normalizedData) {
+            const resultsHtml = `
+                <h3>✅ Import Successful!</h3>
+                
+                <h4>📊 Raw Data (${rawData.length} rows)</h4>
+                <div class="debug-info">${JSON.stringify(rawData, null, 2)}</div>
+                
+                <h4>🔄 Normalized Data (${normalizedData.length} items)</h4>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Part Number</th>
+                            <th>Description</th>
+                            <th>Category</th>
+                            <th>Qty</th>
+                            <th>Unit Cost</th>
+                            <th>Total</th>
+                            <th>Supplier</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${normalizedData.map(item => `
+                            <tr>
+                                <td>${item.partNumber}</td>
+                                <td>${item.description}</td>
+                                <td>${item.category}</td>
+                                <td>${item.quantity}</td>
+                                <td>$${item.unitCost.toFixed(2)}</td>
+                                <td>$${item.extendedCost.toFixed(2)}</td>
+                                <td>${item.supplier}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+                
+                <h4>🎯 Ready for BOM Integration</h4>
+                <p>This normalized data can now be imported into your BOM system.</p>
+            `;
+            
+            showResult(resultsHtml, 'success');
+        }
+
+        function showResult(message, type = 'info') {
+            const results = document.getElementById('results');
+            results.innerHTML = `<div class="results ${type}">${message}</div>`;
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+            console.clear();
+        }
+
+        // Initial status
+        showResult('🚀 Excel Import Test Ready! Upload a file or generate test data.', 'info');
+    </script>
+</body>
+</html>
