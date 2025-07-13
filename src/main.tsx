@@ -1,22 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import * as XLSX from 'xlsx';
 import { 
-  Settings, 
   Plus, 
-  Edit3, 
   Download, 
   Upload, 
   CheckCircle, 
-  AlertTriangle, 
   X,
   Building,
   DollarSign,
-  Clock,
-  Users,
-  TrendingUp,
   Package,
-  FileText,
   ShoppingCart,
   ExternalLink,
   FileSpreadsheet,
@@ -34,7 +26,9 @@ import {
   Layers,
   Target,
   ChevronUp,
-  ChevronDown
+  ChevronDown,
+  BookOpen,
+  RotateCcw
 } from 'lucide-react';
 
 // Type definitions
@@ -71,14 +65,6 @@ interface BOMItem {
   };
 }
 
-interface BOMData {
-  items: BOMItem[];
-  metadata?: {
-    version?: string;
-    created?: string;
-    updated?: string;
-  };
-}
 
 interface Template {
   id: string;
@@ -433,7 +419,7 @@ const ImportService = {
         requiredFor: 'Base System',
         digikeyPN: digikeyPN === 'N / A' ? '' : digikeyPN, // Clean up N/A values
         manufacturerPN: partNumber
-      };
+      } as BOMItem;
     });
   }
 };
@@ -568,8 +554,10 @@ const NLPService = {
     return mapping[type] || 'Other';
   },
 
-  extractSpecifications: (type: string, match: RegExpMatchArray) => {
+  extractSpecifications: (type: string, match: RegExpMatchArray | null) => {
     const specs: { [key: string]: string } = {};
+    
+    if (!match) return specs;
     
     switch (type) {
       case 'resistor':
@@ -591,7 +579,7 @@ const NLPService = {
     return specs;
   },
 
-  generateDescription: (input, specifications) => {
+  generateDescription: (input: string, specifications: any) => {
     // Clean up the input and enhance with specifications
     let description = input.trim();
     
@@ -601,7 +589,7 @@ const NLPService = {
     // Add specifications if available
     if (Object.keys(specifications).length > 0) {
       const specStrings = Object.entries(specifications)
-        .map(([key, value]) => `${value}`)
+        .map(([, value]) => `${value}`)
         .join(' ');
       
       if (!description.includes(specStrings)) {
@@ -612,7 +600,7 @@ const NLPService = {
     return description;
   },
 
-  calculateConfidence: (text, category) => {
+  calculateConfidence: (text: string, category: string) => {
     let confidence = 0.5; // Base confidence
     
     // Increase confidence based on specific patterns
@@ -624,20 +612,19 @@ const NLPService = {
     }
     
     // Increase confidence for keyword matches
-    const keywords = NLPService.categoryKeywords[category] || [];
-    const keywordMatches = keywords.filter(keyword => text.includes(keyword)).length;
+    const keywords = (NLPService.categoryKeywords as any)[category] || [];
+    const keywordMatches = keywords.filter((keyword: string) => text.includes(keyword)).length;
     confidence += Math.min(keywordMatches * 0.1, 0.3);
     
     return Math.min(confidence, 1.0);
   },
 
   // AI-ready feature: Generate search suggestions
-  generateSearchSuggestions: (input, inventory = []) => {
-    const parsed = NLPService.parseNaturalLanguage(input);
-    const suggestions = [];
+  generateSearchSuggestions: (input: string, inventory: any[] = []) => {
+    const suggestions: any[] = [];
     
     // Find similar parts in inventory
-    inventory.forEach(item => {
+    inventory.forEach((item: any) => {
       const similarity = NLPService.calculateSimilarity(input, item.description);
       if (similarity > 0.3) {
         suggestions.push({
@@ -653,12 +640,12 @@ const NLPService = {
       .slice(0, 5);
   },
 
-  calculateSimilarity: (text1, text2) => {
+  calculateSimilarity: (text1: string, text2: string) => {
     // Simple word-based similarity (could be enhanced with more sophisticated NLP)
     const words1 = text1.toLowerCase().split(/\s+/);
     const words2 = text2.toLowerCase().split(/\s+/);
     
-    const intersection = words1.filter(word => words2.includes(word));
+    const intersection = words1.filter((word: string) => words2.includes(word));
     const union = new Set([...words1, ...words2]);
     
     return intersection.length / union.size;
@@ -684,15 +671,15 @@ const PartNumberService = {
     'Other': 'OT'
   },
 
-  generatePartNumber: (category, existingNumbers = []) => {
-    const prefix = PartNumberService.categoryPrefixes[category] || 'OT';
+  generatePartNumber: (category: string, existingNumbers: string[] = []) => {
+    const prefix = (PartNumberService.categoryPrefixes as any)[category] || 'OT';
     const existingWithPrefix = existingNumbers
-      .filter(num => num.startsWith(prefix))
-      .map(num => {
+      .filter((num: string) => num.startsWith(prefix))
+      .map((num: string) => {
         const parts = num.split('-');
         return parts.length >= 3 ? parseInt(parts[2]) : 0;
       })
-      .filter(num => !isNaN(num));
+      .filter((num: number) => !isNaN(num));
 
     const nextNumber = existingWithPrefix.length > 0 ? Math.max(...existingWithPrefix) + 1 : 1;
     return `${prefix}-001-${String(nextNumber).padStart(3, '0')}`;
@@ -700,22 +687,36 @@ const PartNumberService = {
 };
 
 // Utility Components
-const Card = ({ children, className = '' }) => (
+const Card = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => (
   <div className={`bg-white rounded-lg shadow-md border border-gray-100 ${className}`}>
     {children}
   </div>
 );
 
-const Button = ({ children, variant = 'primary', size = 'md', onClick, className = '', disabled = false }) => {
+const Button = ({ 
+  children, 
+  variant = 'primary', 
+  size = 'md', 
+  onClick, 
+  className = '', 
+  disabled = false 
+}: {
+  children: React.ReactNode;
+  variant?: 'primary' | 'secondary' | 'outline' | 'danger' | 'success';
+  size?: 'sm' | 'md' | 'lg';
+  onClick?: () => void;
+  className?: string;
+  disabled?: boolean;
+}) => {
   const baseClasses = 'font-medium rounded-md transition-colors duration-200 inline-flex items-center gap-2 border';
-  const variants = {
+  const variants: { [key: string]: string } = {
     primary: 'bg-gray-900 hover:bg-gray-800 text-white border-gray-900',
     secondary: 'bg-white hover:bg-gray-50 text-gray-900 border-gray-300',
     outline: 'bg-white hover:bg-gray-50 text-gray-700 border-gray-300',
     danger: 'bg-red-600 hover:bg-red-700 text-white border-red-600',
     success: 'bg-green-600 hover:bg-green-700 text-white border-green-600'
   };
-  const sizes = {
+  const sizes: { [key: string]: string } = {
     sm: 'px-3 py-1.5 text-sm',
     md: 'px-4 py-2 text-sm',
     lg: 'px-6 py-3 text-base'
@@ -732,8 +733,16 @@ const Button = ({ children, variant = 'primary', size = 'md', onClick, className
   );
 };
 
-const Badge = ({ children, variant = 'default', className = '' }) => {
-  const variants = {
+const Badge = ({ 
+  children, 
+  variant = 'default', 
+  className = '' 
+}: {
+  children: React.ReactNode;
+  variant?: 'default' | 'success' | 'warning' | 'error' | 'info';
+  className?: string;
+}) => {
+  const variants: { [key: string]: string } = {
     default: 'bg-gray-100 text-gray-800',
     success: 'bg-green-100 text-green-800',
     warning: 'bg-yellow-100 text-yellow-800',
@@ -749,22 +758,36 @@ const Badge = ({ children, variant = 'default', className = '' }) => {
 };
 
 // NLP Add Component Dialog
-const NLPAddDialog = ({ isOpen, onClose, onAdd, existingPartNumbers, inventory, bomData }) => {
+const NLPAddDialog = ({ 
+  isOpen, 
+  onClose, 
+  onAdd, 
+  existingPartNumbers, 
+  inventory, 
+  bomData 
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onAdd: (items: any[]) => void;
+  existingPartNumbers: string[];
+  inventory: any[];
+  bomData: any[];
+}) => {
   const [nlpInput, setNlpInput] = useState('');
-  const [parsedData, setParsedData] = useState(null);
-  const [suggestions, setSuggestions] = useState([]);
+  const [parsedData, setParsedData] = useState<any>(null);
+  const [suggestions, setSuggestions] = useState<any[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  const handleInputChange = (input) => {
+  const handleInputChange = (input: string) => {
     setNlpInput(input);
     
     if (input.trim()) {
       // Get existing categories and suppliers for smarter parsing
-      const existingCategories = [...new Set(bomData.map(item => item.category).filter(Boolean))];
-      const existingSuppliers = [...new Set(bomData.map(item => item.supplier).filter(Boolean))];
+      const existingCategories = [...new Set(bomData.map((item: any) => item.category).filter(Boolean))];
+      const existingSuppliers = [...new Set(bomData.map((item: any) => item.supplier).filter(Boolean))];
       
       // Parse the natural language input with context
-      const parsed = NLPService.parseNaturalLanguage(input, existingCategories, existingSuppliers);
+      const parsed: any = NLPService.parseNaturalLanguage(input, existingCategories, existingSuppliers);
       parsed.partNumber = PartNumberService.generatePartNumber(parsed.category, existingPartNumbers);
       parsed.extendedCost = parsed.quantity * parsed.unitCost;
       setParsedData(parsed);
@@ -809,7 +832,7 @@ const NLPAddDialog = ({ isOpen, onClose, onAdd, existingPartNumbers, inventory, 
     onClose();
   };
 
-  const handleAddSuggestion = (suggestion) => {
+  const handleAddSuggestion = (suggestion: any) => {
     const newItem = {
       id: Date.now(),
       partNumber: PartNumberService.generatePartNumber(suggestion.category, existingPartNumbers),
@@ -931,7 +954,7 @@ const NLPAddDialog = ({ isOpen, onClose, onAdd, existingPartNumbers, inventory, 
                       <div className="text-sm text-gray-900 mt-1">
                         {Object.entries(parsedData.specifications).map(([key, value]) => (
                           <span key={key} className="inline-block bg-gray-100 px-2 py-1 rounded text-xs mr-2 mb-1">
-                            {key}: {value}
+                            {key}: {String(value)}
                           </span>
                         ))}
                       </div>
@@ -1075,9 +1098,19 @@ const NLPAddDialog = ({ isOpen, onClose, onAdd, existingPartNumbers, inventory, 
     </div>
   );
 };
-const BulkAddDialog = ({ isOpen, onClose, onAdd, existingPartNumbers }) => {
+const BulkAddDialog = ({ 
+  isOpen, 
+  onClose, 
+  onAdd, 
+  existingPartNumbers 
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onAdd: (items: any[]) => void;
+  existingPartNumbers: string[];
+}) => {
   const [bulkText, setBulkText] = useState('');
-  const [previewData, setPreviewData] = useState([]);
+  const [previewData, setPreviewData] = useState<BOMItem[]>([]);
   const [showPreview, setShowPreview] = useState(false);
 
   const parseTextInput = () => {
@@ -1235,15 +1268,23 @@ const BulkAddDialog = ({ isOpen, onClose, onAdd, existingPartNumbers }) => {
 };
 
 // Import Dialog Component
-const ImportDialog = ({ isOpen, onClose, onImport }) => {
+const ImportDialog = ({ 
+  isOpen, 
+  onClose, 
+  onImport 
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onImport: (data: any[]) => void;
+}) => {
   const [step, setStep] = useState(1); // 1: Upload, 2: Column Mapping, 3: Preview
-  const [rawData, setRawData] = useState([]);
-  const [availableColumns, setAvailableColumns] = useState([]);
-  const [columnMapping, setColumnMapping] = useState({});
-  const [importedData, setImportedData] = useState([]);
+  const [rawData, setRawData] = useState<any[]>([]);
+  const [availableColumns, setAvailableColumns] = useState<string[]>([]);
+  const [columnMapping, setColumnMapping] = useState<{[key: string]: string}>({});
+  const [importedData, setImportedData] = useState<BOMItem[]>([]);
   const [selectedItems, setSelectedItems] = useState(new Set());
   const [fileName, setFileName] = useState('');
-  const fileInputRef = useRef();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Field mapping options
   const fieldMappings = [
@@ -1256,8 +1297,8 @@ const ImportDialog = ({ isOpen, onClose, onImport }) => {
     { key: 'digikeyPN', label: 'DigiKey PN', required: false }
   ];
 
-  const handleFileUpload = async (event) => {
-    const file = event.target.files[0];
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
     if (!file) return;
 
     try {
@@ -1269,7 +1310,7 @@ const ImportDialog = ({ isOpen, onClose, onImport }) => {
       } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
         // Show loading feedback for Excel files
         console.log('🔄 Processing Excel file, may auto-convert to CSV if needed...');
-        data = await ImportService.parseExcel(file);
+        data = await ImportService.parseExcel(file) as any[];
       }
 
       if (data.length === 0) {
@@ -1317,9 +1358,9 @@ const ImportDialog = ({ isOpen, onClose, onImport }) => {
     }
   };
 
-  const tryAutoMapping = (columns) => {
-    const mapping = {};
-    const lowerColumns = columns.map(col => ({ original: col, lower: col.toLowerCase() }));
+  const tryAutoMapping = (columns: string[]) => {
+    const mapping: { [key: string]: string } = {};
+    const lowerColumns = columns.map((col: string) => ({ original: col, lower: col.toLowerCase() }));
     
     fieldMappings.forEach(field => {
       // Try exact matches first
@@ -1334,7 +1375,7 @@ const ImportDialog = ({ isOpen, onClose, onImport }) => {
       }
       
       // Try partial matches
-      const patterns = {
+      const patterns: {[key: string]: string[]} = {
         partNumber: ['part', 'number', 'pn', 'item'],
         description: ['description', 'desc', 'name', 'component'],
         category: ['category', 'type', 'class'],
@@ -1346,7 +1387,7 @@ const ImportDialog = ({ isOpen, onClose, onImport }) => {
       
       const fieldPatterns = patterns[field.key] || [];
       const match = lowerColumns.find(col => 
-        fieldPatterns.some(pattern => col.lower.includes(pattern))
+        fieldPatterns.some((pattern: string) => col.lower.includes(pattern))
       );
       
       if (match) {
@@ -1357,20 +1398,27 @@ const ImportDialog = ({ isOpen, onClose, onImport }) => {
     return mapping;
   };
 
-  const normalizeDataWithMapping = (data, mapping) => {
-    return data.map(row => ({
-      partNumber: row[mapping.partNumber] || '',
+  const normalizeDataWithMapping = (data: any[], mapping: { [key: string]: string }): BOMItem[] => {
+    return data.map((row: any, index: number) => ({
+      id: Date.now() + index,
+      partNumber: row[mapping.partNumber] || `IMP-${Date.now()}-${index}`,
       description: row[mapping.description] || 'Unknown Component',
       category: row[mapping.category] || 'Miscellaneous',
       quantity: parseInt(row[mapping.quantity]) || 1,
+      unit: 'EA',
       unitCost: parseFloat(row[mapping.unitCost]) || 0,
       extendedCost: (parseInt(row[mapping.quantity]) || 1) * (parseFloat(row[mapping.unitCost]) || 0),
       supplier: row[mapping.supplier] || 'Unknown',
-      digikeyPN: row[mapping.digikeyPN] || ''
-    }));
+      leadTime: 1,
+      revision: 'A',
+      status: 'Active',
+      requiredFor: 'Base System',
+      digikeyPN: row[mapping.digikeyPN] || '',
+      manufacturerPN: row[mapping.partNumber] || `IMP-${Date.now()}-${index}`
+    } as BOMItem));
   };
 
-  const handleColumnMappingChange = (fieldKey, columnName) => {
+  const handleColumnMappingChange = (fieldKey: string, columnName: string) => {
     setColumnMapping(prev => ({
       ...prev,
       [fieldKey]: columnName
@@ -1393,7 +1441,7 @@ const ImportDialog = ({ isOpen, onClose, onImport }) => {
     setStep(3);
   };
 
-  const toggleItemSelection = (index) => {
+  const toggleItemSelection = (index: number) => {
     const newSelection = new Set(selectedItems);
     if (newSelection.has(index)) {
       newSelection.delete(index);
@@ -1704,11 +1752,19 @@ const ImportDialog = ({ isOpen, onClose, onImport }) => {
 };
 
 // Template Dialog Component
-const TemplateDialog = ({ isOpen, onClose, onApply }) => {
+const TemplateDialog = ({ 
+  isOpen, 
+  onClose, 
+  onApply 
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onApply: (items: any[]) => void;
+}) => {
   const [templates] = useState(BOMStorage.loadTemplates());
 
-  const handleApplyTemplate = (template) => {
-    const templateParts = template.parts.map((part, index) => ({
+  const handleApplyTemplate = (template: any) => {
+    const templateParts = template.parts.map((part: any, index: number) => ({
       id: Date.now() + index,
       partNumber: PartNumberService.generatePartNumber(part.category, []),
       description: part.description,
@@ -1751,7 +1807,7 @@ const TemplateDialog = ({ isOpen, onClose, onApply }) => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {templates.map((template) => (
+          {templates.map((template: Template) => (
             <Card key={template.id} className="p-4 border-2 border-gray-200 hover:border-blue-300 transition-colors">
               <div className="flex justify-between items-start mb-3">
                 <div>
@@ -1764,7 +1820,7 @@ const TemplateDialog = ({ isOpen, onClose, onApply }) => {
               <div className="mb-4">
                 <div className="text-xs text-gray-500 mb-2">Preview:</div>
                 <div className="space-y-1">
-                  {template.parts.slice(0, 3).map((part, index) => (
+                  {template.parts.slice(0, 3).map((part: any, index: number) => (
                     <div key={index} className="text-xs text-gray-700 flex justify-between">
                       <span>{part.description}</span>
                       <span>${(part.quantity * part.unitCost).toFixed(2)}</span>
@@ -1780,7 +1836,7 @@ const TemplateDialog = ({ isOpen, onClose, onApply }) => {
 
               <div className="flex justify-between items-center">
                 <div className="text-sm font-semibold">
-                  Total: ${template.parts.reduce((sum, part) => sum + (part.quantity * part.unitCost), 0).toFixed(2)}
+                  Total: ${template.parts.reduce((sum: number, part: any) => sum + (part.quantity * part.unitCost), 0).toFixed(2)}
                 </div>
                 <Button size="sm" onClick={() => handleApplyTemplate(template)}>
                   <Target size={14} />
@@ -1796,8 +1852,38 @@ const TemplateDialog = ({ isOpen, onClose, onApply }) => {
 };
 
 // Header Component
-const Header = ({ lastSaved, onSave, onExport, onImport, onBulkAdd, onImportFile, onTemplates, onNLPAdd }) => {
+const Header = ({ 
+  lastSaved, 
+  onSave, 
+  onExport, 
+  onImport, 
+  onBulkAdd, 
+  onImportFile, 
+  onTemplates, 
+  onNLPAdd 
+}: {
+  lastSaved: Date | null;
+  onSave: () => void;
+  onExport: () => void;
+  onImport: (file: File) => void;
+  onBulkAdd: () => void;
+  onImportFile: () => void;
+  onTemplates: () => void;
+  onNLPAdd: () => void;
+}) => {
   const [showDropdown, setShowDropdown] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      onImport(file);
+    }
+  };
 
   return (
     <div className="bg-white border-b-2 border-gray-200 shadow-sm">
@@ -1893,13 +1979,20 @@ const Header = ({ lastSaved, onSave, onExport, onImport, onBulkAdd, onImportFile
               <span>Export</span>
             </button>
             <button 
-              onClick={onImport}
+              onClick={handleImportClick}
               className="flex items-center space-x-1 px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50 transition-colors text-gray-700"
               title="Import JSON File"
             >
               <FolderOpen size={16} />
               <span>Import</span>
             </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json"
+              onChange={handleFileChange}
+              className="hidden"
+            />
           </div>
         </div>
       </div>
@@ -1908,26 +2001,38 @@ const Header = ({ lastSaved, onSave, onExport, onImport, onBulkAdd, onImportFile
 };
 
 // Search and Filter Component
-const SearchAndFilter = ({ onSearch, onFilter, totalItems, filteredItems, bomData }) => {
+const SearchAndFilter = ({ 
+  onSearch, 
+  onFilter, 
+  totalItems, 
+  filteredItems, 
+  bomData 
+}: {
+  onSearch: (term: string) => void;
+  onFilter: (filters: {category: string; supplier: string}) => void;
+  totalItems: number;
+  filteredItems: number;
+  bomData: any[];
+}) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [supplierFilter, setSupplierFilter] = useState('');
 
   // Extract unique categories and suppliers from actual BOM data
-  const uniqueCategories = [...new Set(bomData.map(item => item.category).filter(Boolean))].sort();
-  const uniqueSuppliers = [...new Set(bomData.map(item => item.supplier).filter(Boolean))].sort();
+  const uniqueCategories = [...new Set(bomData.map((item: any) => item.category).filter(Boolean))].sort();
+  const uniqueSuppliers = [...new Set(bomData.map((item: any) => item.supplier).filter(Boolean))].sort();
 
-  const handleSearch = (term) => {
+  const handleSearch = (term: string) => {
     setSearchTerm(term);
     onSearch(term);
   };
 
-  const handleCategoryFilter = (category) => {
+  const handleCategoryFilter = (category: string) => {
     setCategoryFilter(category);
     onFilter({ category, supplier: supplierFilter });
   };
 
-  const handleSupplierFilter = (supplier) => {
+  const handleSupplierFilter = (supplier: string) => {
     setSupplierFilter(supplier);
     onFilter({ category: categoryFilter, supplier });
   };
@@ -2023,24 +2128,24 @@ const SearchAndFilter = ({ onSearch, onFilter, totalItems, filteredItems, bomDat
 };
 
 // Helper function to get most common category
-const getMostCommonCategory = (bomData) => {
-  const categoryCount = {};
-  bomData.forEach(item => {
+const getMostCommonCategory = (bomData: any[]) => {
+  const categoryCount: { [key: string]: number } = {};
+  bomData.forEach((item: any) => {
     if (item.category) {
       categoryCount[item.category] = (categoryCount[item.category] || 0) + 1;
     }
   });
   
   const mostCommon = Object.entries(categoryCount)
-    .sort(([,a], [,b]) => b - a)[0];
+    .sort(([,a], [,b]) => (b as number) - (a as number))[0];
   
   return mostCommon ? `${mostCommon[0]} (${mostCommon[1]})` : 'None';
 };
 
 // Digikey Service (keeping original)
 const DigikeyService = {
-  generateDigikeyCSV: (bomItems) => {
-    const digikeyItems = bomItems.filter(item => item.digikeyPN);
+  generateDigikeyCSV: (bomItems: any[]) => {
+    const digikeyItems = bomItems.filter((item: any) => item.digikeyPN);
     
     if (digikeyItems.length === 0) {
       alert('No DigiKey parts found in BOM!');
@@ -2048,14 +2153,14 @@ const DigikeyService = {
     }
 
     const csvHeader = 'Part Number,Quantity,Customer Reference\n';
-    const csvRows = digikeyItems.map(item => 
+    const csvRows = digikeyItems.map((item: any) => 
       `${item.digikeyPN},${item.quantity},"${item.partNumber} - ${item.description}"`
     ).join('\n');
     
     return csvHeader + csvRows;
   },
 
-  downloadDigikeyCSV: (bomItems, filename = 'cannasol_digikey_order.csv') => {
+  downloadDigikeyCSV: (bomItems: any[], filename = 'cannasol_digikey_order.csv') => {
     const csvContent = DigikeyService.generateDigikeyCSV(bomItems);
     if (!csvContent) return;
 
@@ -2071,8 +2176,8 @@ const DigikeyService = {
     URL.revokeObjectURL(url);
   },
 
-  openDigikeyBulkOrder: (bomItems) => {
-    const digikeyItems = bomItems.filter(item => item.digikeyPN);
+  openDigikeyBulkOrder: (bomItems: BOMItem[]) => {
+    const digikeyItems = bomItems.filter((item: BOMItem) => item.digikeyPN);
     
     if (digikeyItems.length === 0) {
       alert('No DigiKey parts found in BOM!');
@@ -2094,20 +2199,20 @@ const DigikeyService = {
     }
   },
 
-  getDigikeySummary: (bomItems) => {
-    const digikeyItems = bomItems.filter(item => item.digikeyPN);
+  getDigikeySummary: (bomItems: BOMItem[]) => {
+    const digikeyItems = bomItems.filter((item: BOMItem) => item.digikeyPN);
     return {
       totalItems: digikeyItems.length,
-      totalQuantity: digikeyItems.reduce((sum, item) => sum + item.quantity, 0),
-      totalCost: digikeyItems.reduce((sum, item) => sum + item.extendedCost, 0),
-      nonDigikeyItems: bomItems.filter(item => !item.digikeyPN).length,
+      totalQuantity: digikeyItems.reduce((sum: number, item: BOMItem) => sum + item.quantity, 0),
+      totalCost: digikeyItems.reduce((sum: number, item: BOMItem) => sum + item.extendedCost, 0),
+      nonDigikeyItems: bomItems.filter((item: BOMItem) => !item.digikeyPN).length,
       digikeyItems
     };
   }
 };
 
 // DigiKey Shopping Component (keeping original with minor updates)
-const DigikeyShoppingList = ({ bomData }) => {
+const DigikeyShoppingList = ({ bomData }: { bomData: BOMItem[] }) => {
   const [showDigikeyDialog, setShowDigikeyDialog] = useState(false);
   const summary = DigikeyService.getDigikeySummary(bomData);
 
@@ -2208,7 +2313,7 @@ const DigikeyShoppingList = ({ bomData }) => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {summary.digikeyItems.map((item, index) => (
+                    {summary.digikeyItems.map((item: BOMItem, index: number) => (
                       <tr key={item.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                         <td className="px-4 py-2 text-sm font-mono text-red-600 font-medium">
                           {item.digikeyPN}
@@ -2224,7 +2329,7 @@ const DigikeyShoppingList = ({ bomData }) => {
                         </td>
                         <td className="px-4 py-2 text-center">
                           <a 
-                            href={`https://www.digikey.com/en/products/detail/${encodeURIComponent(item.digikeyPN)}`}
+                            href={`https://www.digikey.com/en/products/result?keywords=${encodeURIComponent(item.digikeyPN)}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-blue-500 hover:text-blue-700 transition-colors"
@@ -2323,7 +2428,7 @@ const BOMManager = () => {
     }
   };
 
-  const handleSearch = (searchTerm) => {
+  const handleSearch = (searchTerm: string) => {
     let filtered = bomData;
     
     if (searchTerm) {
@@ -2340,7 +2445,7 @@ const BOMManager = () => {
     setFilteredData(filtered);
   };
 
-  const handleFilter = ({ category, supplier }) => {
+  const handleFilter = ({ category, supplier }: { category: string; supplier: string }) => {
     let filtered = bomData;
     
     if (category) {
@@ -2353,21 +2458,21 @@ const BOMManager = () => {
     setFilteredData(filtered);
   };
 
-  const handleBulkAdd = (newItems) => {
+  const handleBulkAdd = (newItems: BOMItem[]) => {
     const updatedData = [...bomData, ...newItems];
     setBomData(updatedData);
     setFilteredData(updatedData);
     handleSave();
   };
 
-  const handleImportItems = (importedItems) => {
+  const handleImportItems = (importedItems: BOMItem[]) => {
     const updatedData = [...bomData, ...importedItems];
     setBomData(updatedData);
     setFilteredData(updatedData);
     handleSave();
   };
 
-  const handleTemplateApply = (templateItems) => {
+  const handleTemplateApply = (templateItems: BOMItem[]) => {
     const updatedData = [...bomData, ...templateItems];
     setBomData(updatedData);
     setFilteredData(updatedData);
@@ -2430,7 +2535,7 @@ const BOMManager = () => {
     handleSave();
   };
 
-  const toggleItemSelection = (itemId) => {
+  const toggleItemSelection = (itemId: number) => {
     const newSelection = new Set(selectedItems);
     if (newSelection.has(itemId)) {
       newSelection.delete(itemId);
@@ -2449,7 +2554,7 @@ const BOMManager = () => {
   };
 
   // Cell editing functions (keeping existing functionality)
-  const handleCellClick = (itemId, field, currentValue) => {
+  const handleCellClick = (itemId: number, field: string, currentValue: any) => {
     setEditingCell({ itemId, field });
     setEditValue(currentValue || '');
   };
@@ -2460,7 +2565,7 @@ const BOMManager = () => {
     const { itemId, field } = editingCell;
     const updatedData = bomData.map(item => {
       if (item.id === itemId) {
-        let newValue = editValue;
+        let newValue: any = editValue;
         
         if (field === 'quantity') {
           newValue = parseInt(editValue) || 0;
@@ -2493,7 +2598,7 @@ const BOMManager = () => {
     setEditValue('');
   };
 
-  const handleKeyPress = (e) => {
+  const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       handleCellSave();
     } else if (e.key === 'Escape') {
@@ -2501,7 +2606,7 @@ const BOMManager = () => {
     }
   };
 
-  const renderEditableCell = (item, field, value, className = "") => {
+  const renderEditableCell = (item: BOMItem, field: string, value: any, className = "") => {
     const isEditing = editingCell?.itemId === item.id && editingCell?.field === field;
     
     if (isEditing) {
@@ -2799,9 +2904,6 @@ const BOMManager = () => {
                           onClick={() => {
                             if (window.confirm('Delete this item?')) {
                               const updatedData = bomData.filter(i => i.id !== item.id);
-                              const updatedFiltered = updatedData.filter(i => 
-                                filteredData.some(f => f.id === i.id) || i.id === item.id
-                              );
                               setBomData(updatedData);
                               setFilteredData(updatedData.filter(i => 
                                 filteredData.some(f => f.id === i.id)
@@ -2820,7 +2922,7 @@ const BOMManager = () => {
                           <X size={16} />
                         </button>
                         <a 
-                          href={item.digikeyPN && item.digikeyPN.trim() ? `https://www.digikey.com/en/products/detail/${encodeURIComponent(item.digikeyPN.trim())}` : '#'}
+                          href={item.digikeyPN && item.digikeyPN.trim() ? `https://www.digikey.com/en/products/result?keywords=${encodeURIComponent(item.digikeyPN.trim())}` : '#'}
                           target={item.digikeyPN && item.digikeyPN.trim() ? '_blank' : '_self'}
                           rel="noopener noreferrer"
                           className={`p-1 transition-colors ${
