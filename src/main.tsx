@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
+import EasyEDAService from './services/EasyEDAService.js';
 import { 
   Plus, 
   Download, 
@@ -28,7 +29,8 @@ import {
   ChevronUp,
   ChevronDown,
   RotateCcw,
-  Edit2
+  Edit2,
+  Cpu
 } from 'lucide-react';
 
 // Type definitions
@@ -2192,7 +2194,7 @@ const ImportDialog = ({
                     <select
                       value={columnMapping[field.key] || ''}
                       onChange={(e) => handleColumnMappingChange(field.key, e.target.value)}
-                      className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     >
                       <option value="">-- Not mapped --</option>
                       {availableColumns.map(col => (
@@ -2385,7 +2387,7 @@ const Header = ({
   };
 
   return (
-    <div className="bg-white border-b-2 border-green-200 shadow-sm">
+    <div className="bg-white border-b border-gray-200 shadow-sm">
       <div className="max-w-7xl mx-auto px-4 py-4">
         <div className="flex items-center justify-between">
           {/* Logo and Title */}
@@ -2399,15 +2401,15 @@ const Header = ({
               />
               <div>
                 <h1 className="text-xl font-bold text-gray-900">Cannasol Technologies</h1>
-                <p className="text-sm text-green-700 font-medium">BOM Generator</p>
+                <p className="text-sm text-gray-600 font-medium">BOM Generator</p>
               </div>
             </div>
             
             {/* Current BOM Name */}
             {currentBOMName && (
-              <div className="hidden md:flex items-center space-x-2 px-3 py-1.5 bg-green-50 rounded-lg border border-green-200">
-                <FolderOpen size={16} className="text-green-600" />
-                <span className="text-sm font-medium text-green-800">{currentBOMName}</span>
+              <div className="hidden md:flex items-center space-x-2 px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-200">
+                <FolderOpen size={16} className="text-gray-600" />
+                <span className="text-sm font-medium text-gray-800">{currentBOMName}</span>
               </div>
             )}
           </div>
@@ -2558,7 +2560,7 @@ const SearchAndFilter = ({
               placeholder="Search parts, descriptions, or part numbers..."
               value={searchTerm}
               onChange={(e) => handleSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
         </div>
@@ -2568,7 +2570,7 @@ const SearchAndFilter = ({
           <select
             value={categoryFilter}
             onChange={(e) => handleCategoryFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500"
+            className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           >
             <option value="">All Categories</option>
             {uniqueCategories.map(category => (
@@ -2579,7 +2581,7 @@ const SearchAndFilter = ({
           <select
             value={supplierFilter}
             onChange={(e) => handleSupplierFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500"
+            className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           >
             <option value="">All Suppliers</option>
             {uniqueSuppliers.map(supplier => (
@@ -2907,6 +2909,9 @@ const BOMManager = () => {
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showNLPAdd, setShowNLPAdd] = useState(false);
   const [showBOMManagement, setShowBOMManagement] = useState(false);
+
+  // Initialize EasyEDA service
+  const easyEDAService = useRef(new EasyEDAService()).current;
 
   // Load data on component mount
   useEffect(() => {
@@ -3292,7 +3297,7 @@ const BOMManager = () => {
     return (
       <div
         onClick={() => handleCellClick(item.id, field, value)}
-        className={`cursor-pointer hover:bg-green-50 px-2 py-1 rounded transition-colors ${className} ${
+        className={`cursor-pointer hover:bg-gray-50 px-2 py-1 rounded transition-colors ${className} ${
           value === '' || value === null || value === undefined ? 'text-gray-400 italic' : ''
         }`}
         title="Click to edit"
@@ -3445,10 +3450,10 @@ const BOMManager = () => {
         <Card className="relative">
           <div className="overflow-x-auto">
             {/* Table toolbar */}
-            <div className="flex items-center justify-between px-4 py-3 bg-green-50 border-b border-green-200">
+            <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
               <div className="flex items-center space-x-2">
-                <Package size={16} className="text-green-600" />
-                <span className="text-sm font-medium text-green-800">
+                <Package size={16} className="text-gray-600" />
+                <span className="text-sm font-medium text-gray-800">
                   {filteredData.length} items
                 </span>
               </div>
@@ -3462,8 +3467,8 @@ const BOMManager = () => {
                 </button>
               </div>
             </div>
-            <div className="mb-2 p-3 bg-green-50 border-l-4 border-green-500">
-              <p className="text-sm text-green-800">
+            <div className="mb-2 p-3 bg-gray-50 border-l-4 border-gray-400">
+              <p className="text-sm text-gray-700">
                 💡 <strong>Features:</strong> Click cells to edit • Get auto-suggestions for categories/suppliers • Select items for bulk operations • Use search/filter
               </p>
             </div>
