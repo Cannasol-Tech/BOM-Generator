@@ -954,6 +954,7 @@ const BOMManagementDialog = ({
 
   const refreshBOMList = () => {
     const boms = BOMStorage.getNamedBOMs();
+    console.log('🗂️ Refreshing BOM list, found', boms.length, 'BOMs:', boms);
     setNamedBOMs(boms);
   };
 
@@ -977,7 +978,9 @@ const BOMManagementDialog = ({
     }
 
     try {
-      BOMStorage.saveNamedBOM(saveName, saveDescription, currentBOMData);
+      const bomId = BOMStorage.saveNamedBOM(saveName, saveDescription, currentBOMData);
+      console.log('✅ BOM saved in dialog with ID:', bomId);
+      
       onSaveBOM(saveName, saveDescription);
       setSaveName('');
       setSaveDescription('');
@@ -991,6 +994,7 @@ const BOMManagementDialog = ({
       document.body.appendChild(toast);
       setTimeout(() => document.body.removeChild(toast), 3000);
     } catch (error) {
+      console.error('❌ Dialog save error:', error);
       alert('Failed to save BOM: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   };
@@ -2941,23 +2945,32 @@ const BOMManager = () => {
   }, [bomData, currentBOMId]);
 
   const handleSave = () => {
+    console.log('🔄 Saving BOM...', { currentBOMId, bomDataLength: bomData.length });
+    
     if (currentBOMId) {
       // Update existing named BOM
       const success = BOMStorage.updateNamedBOM(currentBOMId, bomData);
+      console.log('📝 Named BOM update result:', success);
       if (success) {
         setLastSaved(new Date());
+        console.log('✅ Named BOM saved successfully');
       }
     } else {
       // Legacy save to localStorage
       const success = BOMStorage.save(bomData);
+      console.log('💾 Legacy save result:', success);
       if (success) {
         setLastSaved(new Date());
+        console.log('✅ Legacy BOM saved successfully');
       }
     }
   };
 
   const handleLoadBOM = (bomId: string) => {
+    console.log('📂 Loading BOM:', bomId);
     const namedBOM = BOMStorage.getNamedBOM(bomId);
+    console.log('📊 Loaded BOM data:', namedBOM);
+    
     if (namedBOM) {
       setBomData(namedBOM.bomData);
       setFilteredData(namedBOM.bomData);
@@ -2966,24 +2979,32 @@ const BOMManager = () => {
       BOMStorage.setCurrentBOM(bomId);
       setShowBOMManagement(false);
       
+      console.log('✅ BOM loaded successfully:', namedBOM.name, 'with', namedBOM.bomData.length, 'items');
+      
       // Show success message
       const toast = document.createElement('div');
       toast.className = 'fixed top-4 right-4 bg-blue-500 text-white px-4 py-2 rounded-lg shadow-lg z-50';
       toast.textContent = `Loaded BOM: ${namedBOM.name}`;
       document.body.appendChild(toast);
       setTimeout(() => document.body.removeChild(toast), 3000);
+    } else {
+      console.error('❌ Failed to load BOM:', bomId);
     }
   };
 
   const handleSaveBOM = (name: string, description: string) => {
+    console.log('💾 Saving new named BOM:', name, 'with', bomData.length, 'items');
+    
     try {
       const bomId = BOMStorage.saveNamedBOM(name, description, bomData);
+      console.log('✅ Named BOM saved with ID:', bomId);
+      
       setCurrentBOMId(bomId);
       setCurrentBOMName(name);
       BOMStorage.setCurrentBOM(bomId);
       setLastSaved(new Date());
     } catch (error) {
-      console.error('Failed to save named BOM:', error);
+      console.error('❌ Failed to save named BOM:', error);
     }
   };
 
@@ -3058,8 +3079,9 @@ const BOMManager = () => {
 
   const handleAddItem = () => {
     const existingPartNumbers = bomData.map(item => item.partNumber);
+    const newId = Math.max(...bomData.map(item => item.id), 0) + 1;
     const newItem = {
-      id: Math.max(...bomData.map(item => item.id), 0) + 1,
+      id: newId,
       partNumber: PartNumberService.generatePartNumber('Other', existingPartNumbers),
       description: 'New Component',
       category: 'Other',
@@ -3075,10 +3097,24 @@ const BOMManager = () => {
       digikeyPN: '',
       manufacturerPN: ''
     };
+    
     const updatedData = [...bomData, newItem];
     setBomData(updatedData);
     setFilteredData(updatedData);
-    handleSave();
+    
+    // Save the data
+    if (currentBOMId) {
+      BOMStorage.updateNamedBOM(currentBOMId, updatedData);
+    } else {
+      BOMStorage.save(updatedData);
+    }
+    setLastSaved(new Date());
+    
+    // Auto-edit the new item's description
+    setTimeout(() => {
+      setEditingCell({ itemId: newId, field: 'description' });
+      setEditValue('New Component');
+    }, 100);
   };
 
   const handleDeleteSelected = () => {
@@ -3407,7 +3443,16 @@ const BOMManager = () => {
         )}
 
         {/* BOM Table */}
-        <Card>
+        <Card className="relative">
+          {/* Floating Add Button */}
+          <button
+            onClick={handleAddItem}
+            className="absolute top-4 right-4 z-10 w-10 h-10 bg-green-500 hover:bg-green-600 text-white rounded-full shadow-lg flex items-center justify-center transition-all hover:scale-105"
+            title="Add new item"
+          >
+            <Plus size={20} />
+          </button>
+          
           <div className="overflow-x-auto">
             <div className="mb-2 p-3 bg-blue-50 border-l-4 border-blue-400">
               <p className="text-sm text-blue-700">
@@ -3528,6 +3573,27 @@ const BOMManager = () => {
                     </td>
                   </tr>
                 ))}
+                
+                {/* Add New Item Row */}
+                <tr className="bg-green-50 border border-green-200 hover:bg-green-100 transition-colors">
+                  <td className="px-3 py-2 text-center">
+                    <button
+                      onClick={handleAddItem}
+                      className="w-6 h-6 bg-green-500 hover:bg-green-600 text-white rounded-full flex items-center justify-center transition-colors"
+                      title="Add new item"
+                    >
+                      <Plus size={12} />
+                    </button>
+                  </td>
+                  <td 
+                    colSpan={8} 
+                    className="px-3 py-2 text-center text-sm text-green-700 font-medium cursor-pointer"
+                    onClick={handleAddItem}
+                  >
+                    Click here or the + button to add a new item
+                  </td>
+                </tr>
+                
                 <tr className="bg-gray-100 font-semibold border-t-2 border-gray-300">
                   <td></td>
                   <td colSpan={5} className="px-3 py-1.5 text-xs text-gray-900">TOTAL</td>
