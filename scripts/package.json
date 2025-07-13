@@ -1,0 +1,31 @@
+{
+  "name": "cannasol-bom-firebase-setup",
+  "version": "1.0.0",
+  "description": "Firebase initialization for Cannasol BOM automation system",
+  "main": "firebase-init.js",
+  "scripts": {
+    "init": "node firebase-init.js",
+    "setup": "npm install && node firebase-init.js",
+    "test-connection": "node test-connection.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.0.0"
+  },
+  "devDependencies": {
+    "dotenv": "^16.0.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "author": "Cannasol Technologies",
+  "license": "MIT",
+  "keywords": [
+    "firebase",
+    "firestore", 
+    "bom",
+    "inventory",
+    "automation",
+    "cannasol",
+    "n8n"
+  ]
+}

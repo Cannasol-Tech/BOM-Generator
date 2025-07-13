@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import EasyEDAService from './services/EasyEDAService.js';
+import { firebaseBOMService } from './services/FirebaseBOMService';
+import { firebaseAuthService, AuthUser } from './services/FirebaseAuthService';
+import { AuthDialog } from './components/AuthDialog';
 import { 
   Plus, 
   Download, 
@@ -30,7 +33,12 @@ import {
   ChevronDown,
   RotateCcw,
   Edit2,
-  Cpu
+  Cpu,
+  LogOut,
+  User,
+  Cloud,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
 
 // Type definitions
@@ -2900,6 +2908,12 @@ const BOMManager = () => {
   const [editValue, setEditValue] = useState('');
   const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
   
+  // Firebase Authentication state
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [showAuthDialog, setShowAuthDialog] = useState(false);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'offline' | 'error'>('offline');
+  
   // BOM Management states
   const [currentBOMId, setCurrentBOMId] = useState<string | null>(null);
   const [currentBOMName, setCurrentBOMName] = useState<string | null>(null);
@@ -2940,6 +2954,41 @@ const BOMManager = () => {
     const loadedInventory = BOMStorage.loadInventory();
     setInventory(loadedInventory);
   }, []);
+
+  // Firebase Authentication Effect
+  useEffect(() => {
+    const unsubscribe = firebaseAuthService.onAuthStateChange((authUser) => {
+      setUser(authUser);
+      if (authUser) {
+        setSyncStatus('synced');
+      } else {
+        setSyncStatus('offline');
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Online/Offline detection
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      if (user) setSyncStatus('synced');
+    };
+    
+    const handleOffline = () => {
+      setIsOnline(false);
+      setSyncStatus('offline');
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [user]);
 
   // Auto-save every 30 seconds
   useEffect(() => {

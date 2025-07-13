@@ -12,10 +12,13 @@
     "deploy": "npm run build && netlify deploy --prod --dir=dist",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "firebase:init": "node firebase-init.js",
+    "firebase:setup": "npm install && node firebase-init.js",
+    "firebase:test": "node test-connection.js"
   },
   "dependencies": {
-    "firebase": "^11.10.0",
+    "firebase": "^10.7.1",
     "lucide-react": "^0.294.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -32,6 +35,8 @@
     "eslint-plugin-react": "^7.33.2",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.4",
+    "firebase-admin": "^12.0.0",
+    "dotenv": "^16.0.0",
     "identity-obj-proxy": "^3.0.0",
     "jest": "^30.0.4",
     "jest-environment-jsdom": "^30.0.4",
@@ -47,10 +52,16 @@
     "inventory",
     "digikey",
     "electronics",
-    "cannasol"
+    "cannasol",
+    "firebase",
+    "firestore",
+    "automation"
   ],
   "author": "Cannasol Technologies",
   "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0"
+  },
   "jest": {
     "preset": "ts-jest",
     "testEnvironment": "jsdom",
