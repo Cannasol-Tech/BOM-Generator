@@ -202,7 +202,7 @@ const ImportService = {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       
-      reader.onload = (e) => {
+      reader.onload = async (e) => {
         try {
           console.log('📖 File loaded, parsing with SheetJS...');
           
@@ -215,32 +215,80 @@ const ImportService = {
           const sheetName = workbook.SheetNames[0];
           const worksheet = workbook.Sheets[sheetName];
           
-          // Convert to JSON
+          // Try different parsing approaches
+          let processedData = [];
+          
+          // Method 1: Standard JSON parsing
           const jsonData = XLSX.utils.sheet_to_json(worksheet, { 
             header: 1,  // Use first row as header
             defval: ''   // Default value for empty cells
           }) as any[][];
           
-          console.log('📊 Raw Excel data:', jsonData);
+          console.log('📊 Raw Excel data (Method 1):', jsonData);
           
-          if (jsonData.length < 2) {
-            throw new Error('Excel file must have at least 2 rows (header + data)');
+          if (jsonData.length >= 2) {
+            // Convert array format to object format
+            const headers = jsonData[0];
+            
+            // Check if we got proper column structure
+            if (Array.isArray(headers) && headers.length > 1) {
+              for (let i = 1; i < jsonData.length; i++) {
+                const row: any = {};
+                headers.forEach((header: string, index: number) => {
+                  row[header] = jsonData[i][index] || '';
+                });
+                processedData.push(row);
+              }
+              
+              console.log('✅ Excel parsed successfully (Method 1):', processedData);
+              resolve(processedData);
+              return;
+            } else {
+              console.log('⚠️ Method 1 failed - single column or malformed headers, trying CSV conversion...');
+            }
           }
           
-          // Convert array format to object format
-          const headers = jsonData[0];
-          const processedData = [];
+          // Method 2: Auto-convert to CSV if Excel parsing fails or produces single column
+          console.log('🔄 Auto-converting Excel to CSV format...');
           
-          for (let i = 1; i < jsonData.length; i++) {
-            const row: any = {};
-            headers.forEach((header: string, index: number) => {
-              row[header] = jsonData[i][index] || '';
+          try {
+            // Convert entire sheet to CSV string
+            const csvString = XLSX.utils.sheet_to_csv(worksheet, { 
+              FS: ',',  // Field separator
+              RS: '\n'  // Record separator
             });
-            processedData.push(row);
+            
+            console.log('📝 Generated CSV string:', csvString.substring(0, 500) + '...');
+            
+            // Parse the CSV string using our CSV parser
+            const csvData = ImportService.parseCSV(csvString);
+            
+            if (csvData.length > 0) {
+              console.log('✅ Excel auto-converted to CSV successfully:', csvData);
+              resolve(csvData);
+              return;
+            }
+          } catch (csvError) {
+            console.log('❌ CSV conversion also failed:', csvError);
           }
           
-          console.log('✅ Excel parsed successfully:', processedData);
-          resolve(processedData);
+          // Method 3: Try with different Excel parsing options
+          console.log('🔄 Trying alternative Excel parsing...');
+          
+          const altJsonData = XLSX.utils.sheet_to_json(worksheet, { 
+            defval: '',
+            blankrows: false,
+            skipHidden: false
+          });
+          
+          if (altJsonData.length > 0) {
+            console.log('✅ Excel parsed with alternative method:', altJsonData);
+            resolve(altJsonData);
+            return;
+          }
+          
+          // If all methods fail
+          throw new Error('Unable to parse Excel file with any method');
           
         } catch (error) {
           console.error('❌ Excel parsing error:', error);
@@ -964,13 +1012,7 @@ const NLPAddDialog = ({ isOpen, onClose, onAdd, existingPartNumbers, inventory, 
                   </div>
                 </div>
 
-                <div className="mt-6 p-4 bg-blue-100 rounded-lg">
-                  <h6 className="font-medium text-blue-800 mb-2">🔮 Smart Learning System</h6>
-                  <p className="text-sm text-blue-700">
-                    This system learns from your existing BOM data to provide better suggestions. It recognizes your 
-                    category naming patterns, preferred suppliers, and component types to make data entry faster and more consistent.
-                  </p>
-                </div>
+
               </Card>
             </div>
           )}
@@ -1171,6 +1213,8 @@ const ImportDialog = ({ isOpen, onClose, onImport }) => {
         const text = await file.text();
         data = ImportService.parseCSV(text);
       } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+        // Show loading feedback for Excel files
+        console.log('🔄 Processing Excel file, may auto-convert to CSV if needed...');
         data = await ImportService.parseExcel(file);
       }
 
@@ -1181,10 +1225,24 @@ const ImportDialog = ({ isOpen, onClose, onImport }) => {
 
       setRawData(data);
       setFileName(file.name);
-      setAvailableColumns(Object.keys(data[0] || {}));
+      const columns = Object.keys(data[0] || {});
+      setAvailableColumns(columns);
+      
+      // Debug logging to see what columns we detected
+      console.log('🔍 Detected columns:', columns);
+      console.log('📊 Sample data row:', data[0]);
+      console.log('📁 File type:', file.name.split('.').pop());
+      console.log('📈 Total rows:', data.length);
+      console.log('🔍 Raw data preview:', data.slice(0, 3));
+      
+      // Check if parsing looks suspicious (single column with a title-like name)
+      if (columns.length === 1 && columns[0].toLowerCase().includes('inventory')) {
+        console.log('⚠️ Detected potential title row or merged cells in Excel file');
+        alert(`⚠️ Excel Import Notice:\n\nYour file appears to have a title row or merged cells. Only found one column: "${columns[0]}"\n\nTip: Try saving your Excel file as CSV first for better results, or make sure your data starts from row 1 with proper column headers.`);
+      }
       
       // Try automatic mapping first
-      const autoMapping = tryAutoMapping(Object.keys(data[0] || {}));
+      const autoMapping = tryAutoMapping(columns);
       setColumnMapping(autoMapping);
       
       // Check if we have required fields mapped
@@ -1200,7 +1258,8 @@ const ImportDialog = ({ isOpen, onClose, onImport }) => {
         setStep(2);
       }
     } catch (error) {
-      alert('Error reading file: ' + error.message);
+      console.error('File upload error:', error);
+      alert('Error reading file: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   };
 
@@ -1895,9 +1954,6 @@ const SearchAndFilter = ({ onSearch, onFilter, totalItems, filteredItems, bomDat
             <div className="flex items-center space-x-1">
               <span className="w-2 h-2 bg-purple-400 rounded-full"></span>
               <span>Most common: <strong>{getMostCommonCategory(bomData)}</strong></span>
-            </div>
-            <div className="text-gray-500 italic">
-              🧠 System learns from your data patterns
             </div>
           </div>
         </div>
@@ -2748,12 +2804,9 @@ const BOMManager = () => {
             <p>• <strong>Dynamic Dropdowns:</strong> Categories and suppliers auto-update from your data</p>
             <p>• <strong>Smart Suggestions:</strong> System learns your naming patterns and preferences</p>
             <p>• <strong>Storage:</strong> Data saved locally in browser (no server required)</p>
+            <p className="text-xs text-blue-600 ml-4">📌 SharePoint Integration coming soon!</p>
             <p>• <strong>Export/Import:</strong> JSON format for data sharing and backup</p>
             <p>• <strong>DigiKey Integration:</strong> CSV export and direct product links</p>
-            <p>• <strong>Hosting:</strong> Deploy for free on Netlify, Vercel, or GitHub Pages</p>
-            <p className="text-xs mt-2 text-gray-600 font-mono bg-gray-100 p-2 rounded">
-              Deploy command: npm run build && npx netlify deploy --prod --dir=build
-            </p>
           </div>
         </div>
       </div>

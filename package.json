@@ -9,7 +9,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext js,jsx,ts,tsx",
-    "deploy": "npm run build && netlify deploy --prod --dir=dist"
+    "deploy": "npm run build && netlify deploy --prod --dir=dist",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
   },
   "dependencies": {
     "lucide-react": "^0.294.0",
@@ -19,6 +22,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/react": "^18.2.37",
     "@types/react-dom": "^18.2.15",
     "@vitejs/plugin-react": "^4.1.1",
@@ -27,8 +31,12 @@
     "eslint-plugin-react": "^7.33.2",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.4",
+    "identity-obj-proxy": "^3.0.0",
+    "jest": "^30.0.4",
+    "jest-environment-jsdom": "^30.0.4",
     "postcss": "^8.4.31",
     "tailwindcss": "^3.3.5",
+    "ts-jest": "^29.4.0",
     "typescript": "^5.2.2",
     "vite": "^5.0.0"
   },
@@ -41,5 +49,21 @@
     "cannasol"
   ],
   "author": "Cannasol Technologies",
-  "license": "MIT"
+  "license": "MIT",
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "jsdom",
+    "setupFilesAfterEnv": [
+      "<rootDir>/src/tests/setup.js"
+    ],
+    "moduleNameMapper": {
+      "\\.(css|less|scss|sass)$": "identity-obj-proxy"
+    },
+    "collectCoverageFrom": [
+      "src/**/*.{ts,tsx,js,jsx}",
+      "!src/**/*.d.ts",
+      "!src/main.tsx",
+      "!src/index.css"
+    ]
+  }
 }
