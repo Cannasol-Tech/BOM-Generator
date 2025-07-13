@@ -219,20 +219,90 @@ const ImportService = {
     const lines = csvText.split('\n').filter(line => line.trim());
     if (lines.length < 2) return [];
 
-    const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-    const data = [];
+    // Smart header detection for CSV files
+    let headerLineIndex = 0;
+    let bestHeaders: string[] = [];
+    let maxColumns = 0;
 
-    for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
-      if (values.length === headers.length) {
-        const row: { [key: string]: string } = {};
-        headers.forEach((header, index) => {
-          row[header] = values[index];
-        });
-        data.push(row);
+    // Look through first 5 lines to find the best header candidate
+    for (let i = 0; i < Math.min(5, lines.length); i++) {
+      const currentHeaders = lines[i].split(',').map(h => h.trim().replace(/"/g, ''));
+      const nonEmptyColumns = currentHeaders.filter(h => h && h.trim()).length;
+      
+      // Check if this line looks like headers
+      const hasHeaderKeywords = currentHeaders.some(header => {
+        const headerLower = header.toLowerCase();
+        return headerLower.includes('id') || 
+               headerLower.includes('name') || 
+               headerLower.includes('description') || 
+               headerLower.includes('cost') || 
+               headerLower.includes('quantity') || 
+               headerLower.includes('stock') || 
+               headerLower.includes('supplier') || 
+               headerLower.includes('part') ||
+               headerLower.includes('component') ||
+               headerLower.includes('inventory') ||
+               headerLower.includes('digikey') ||
+               headerLower.includes('status') ||
+               headerLower.includes('lead') ||
+               headerLower.includes('time');
+      });
+      
+      // Avoid title lines (usually have few meaningful columns)
+      const isLikelyTitle = nonEmptyColumns <= 2 || 
+                           (currentHeaders[0] && currentHeaders[0].toLowerCase().includes('system') && nonEmptyColumns < 5);
+      
+      console.log(`🔍 CSV Line ${i}:`, {
+        headers: currentHeaders.slice(0, 5),
+        nonEmptyColumns,
+        hasHeaderKeywords,
+        isLikelyTitle
+      });
+      
+      if (nonEmptyColumns > maxColumns && hasHeaderKeywords && !isLikelyTitle) {
+        headerLineIndex = i;
+        bestHeaders = currentHeaders;
+        maxColumns = nonEmptyColumns;
+        console.log(`✅ Found better CSV header candidate at line ${i}`);
       }
     }
 
+    console.log(`📋 Using CSV header line ${headerLineIndex}:`, bestHeaders);
+    const data = [];
+
+    for (let i = headerLineIndex + 1; i < lines.length; i++) {
+      const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
+      if (values.length >= bestHeaders.length / 2) { // Allow some flexibility in column count
+        const row: { [key: string]: string } = {};
+        let hasData = false;
+        
+        bestHeaders.forEach((header, index) => {
+          const value = values[index] || '';
+          if (header && header.trim()) {
+            row[header] = value;
+            if (value && value.trim()) {
+              hasData = true;
+            }
+          }
+        });
+        
+        // Skip section headers and total lines
+        const firstValue = values[0] ? values[0].toLowerCase() : '';
+        const isDataRow = hasData && 
+                         !firstValue.includes('total') && 
+                         !firstValue.includes('component') && 
+                         !firstValue.includes('system') &&
+                         !firstValue.includes('external') &&
+                         !firstValue.includes('legacy') &&
+                         !firstValue.includes('overall');
+        
+        if (isDataRow) {
+          data.push(row);
+        }
+      }
+    }
+
+    console.log('✅ CSV parsed with smart header detection:', data.slice(0, 3));
     return data;
   },
 
@@ -258,33 +328,108 @@ const ImportService = {
           // Try different parsing approaches
           let processedData = [];
           
-          // Method 1: Standard JSON parsing
+          // Enhanced Method 1: Smart header detection
           const jsonData = XLSX.utils.sheet_to_json(worksheet, { 
-            header: 1,  // Use first row as header
+            header: 1,  // Use array format to analyze structure
             defval: ''   // Default value for empty cells
           }) as any[][];
           
-          console.log('📊 Raw Excel data (Method 1):', jsonData);
+          console.log('📊 Raw Excel data (Enhanced Method):', jsonData);
           
           if (jsonData.length >= 2) {
-            // Convert array format to object format
-            const headers = jsonData[0];
+            // Find the actual header row by analyzing data structure
+            let headerRowIndex = 0;
+            let bestHeaderRow = jsonData[0];
+            let maxColumns = 0;
+            
+            // Look through first 5 rows to find the best header candidate
+            for (let i = 0; i < Math.min(5, jsonData.length); i++) {
+              const row = jsonData[i];
+              const nonEmptyColumns = row.filter(cell => cell && cell.toString().trim()).length;
+              
+              // Check if this row looks like a header:
+              // 1. Has multiple non-empty columns
+              // 2. Contains common header keywords
+              // 3. Not just a title (single column or merged appearance)
+              const hasHeaderKeywords = row.some((cell: any) => {
+                const cellStr = cell ? cell.toString().toLowerCase() : '';
+                return cellStr.includes('id') || 
+                       cellStr.includes('name') || 
+                       cellStr.includes('description') || 
+                       cellStr.includes('cost') || 
+                       cellStr.includes('quantity') || 
+                       cellStr.includes('stock') || 
+                       cellStr.includes('supplier') || 
+                       cellStr.includes('part') ||
+                       cellStr.includes('component') ||
+                       cellStr.includes('inventory') ||
+                       cellStr.includes('digikey') ||
+                       cellStr.includes('status') ||
+                       cellStr.includes('lead') ||
+                       cellStr.includes('time');
+              });
+              
+              // Avoid title rows (usually have few meaningful columns or span entire width as one field)
+              const isLikelyTitle = nonEmptyColumns <= 2 || 
+                                   (row[0] && row[0].toString().toLowerCase().includes('system') && nonEmptyColumns < 5);
+              
+              console.log(`🔍 Row ${i}:`, {
+                row: row.slice(0, 8),
+                nonEmptyColumns,
+                hasHeaderKeywords,
+                isLikelyTitle
+              });
+              
+              if (nonEmptyColumns > maxColumns && hasHeaderKeywords && !isLikelyTitle) {
+                headerRowIndex = i;
+                bestHeaderRow = row;
+                maxColumns = nonEmptyColumns;
+                console.log(`✅ Found better header candidate at row ${i}`);
+              }
+            }
+            
+            console.log(`📋 Using header row ${headerRowIndex}:`, bestHeaderRow);
             
             // Check if we got proper column structure
-            if (Array.isArray(headers) && headers.length > 1) {
-              for (let i = 1; i < jsonData.length; i++) {
+            if (Array.isArray(bestHeaderRow) && bestHeaderRow.length > 1) {
+              // Convert data starting from the row after headers
+              for (let i = headerRowIndex + 1; i < jsonData.length; i++) {
+                const dataRow = jsonData[i];
+                if (!dataRow || dataRow.length === 0) continue;
+                
                 const row: any = {};
-                headers.forEach((header: string, index: number) => {
-                  row[header] = jsonData[i][index] || '';
+                let hasData = false;
+                
+                bestHeaderRow.forEach((header: string, index: number) => {
+                  const cellValue = dataRow[index] || '';
+                  if (header && header.toString().trim()) {
+                    row[header.toString().trim()] = cellValue;
+                    if (cellValue && cellValue.toString().trim()) {
+                      hasData = true;
+                    }
+                  }
                 });
-                processedData.push(row);
+                
+                // Only include rows that have some data and aren't section headers
+                const firstCell = dataRow[0] ? dataRow[0].toString().toLowerCase() : '';
+                const isDataRow = hasData && 
+                                 !firstCell.includes('total') && 
+                                 !firstCell.includes('component') && 
+                                 !firstCell.includes('system') &&
+                                 !firstCell.includes('external') &&
+                                 !firstCell.includes('legacy') &&
+                                 !firstCell.includes('overall');
+                
+                if (isDataRow) {
+                  processedData.push(row);
+                }
               }
               
-              console.log('✅ Excel parsed successfully (Method 1):', processedData);
+              console.log('✅ Excel parsed successfully with smart header detection:', processedData.slice(0, 3));
               resolve(processedData);
               return;
             } else {
-              console.log('⚠️ Method 1 failed - single column or malformed headers, trying CSV conversion...');
+              console.log('⚠️ Smart header detection failed - trying CSV conversion...');
             }
           }
           
