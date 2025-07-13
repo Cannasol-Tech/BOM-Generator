@@ -27,8 +27,8 @@ import {
   Target,
   ChevronUp,
   ChevronDown,
-  BookOpen,
-  RotateCcw
+  RotateCcw,
+  Edit2
 } from 'lucide-react';
 
 // Type definitions
@@ -66,25 +66,27 @@ interface BOMItem {
 }
 
 
-interface Template {
+// Named BOM interface
+interface NamedBOM {
   id: string;
   name: string;
   description: string;
-  parts: {
-    category: string;
-    description: string;
-    quantity: number;
-    unitCost: number;
-    supplier: string;
-  }[];
+  bomData: BOMItem[];
+  createdDate: string;
+  lastModified: string;
+  version: string;
+  totalItems: number;
+  totalCost: number;
 }
 
 // BOM Storage Service
 const BOMStorage = {
   STORAGE_KEY: 'cannasol-bom-data',
+  NAMED_BOMS_KEY: 'cannasol-named-boms',
   INVENTORY_KEY: 'cannasol-inventory-data',
-  TEMPLATES_KEY: 'cannasol-templates-data',
+  CURRENT_BOM_KEY: 'cannasol-current-bom-id',
   
+  // Legacy methods for backward compatibility
   save: (bomData: BOMItem[]) => {
     try {
       const saveData = {
@@ -114,6 +116,140 @@ const BOMStorage = {
     }
   },
 
+  // Named BOM methods
+  saveNamedBOM: (name: string, description: string, bomData: BOMItem[]): string => {
+    try {
+      const namedBOMs = BOMStorage.getNamedBOMs();
+      const totalCost = bomData.reduce((sum, item) => sum + item.extendedCost, 0);
+      
+      const bomId = `bom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const newBOM: NamedBOM = {
+        id: bomId,
+        name: name.trim(),
+        description: description.trim(),
+        bomData,
+        createdDate: new Date().toISOString(),
+        lastModified: new Date().toISOString(),
+        version: '2.0',
+        totalItems: bomData.length,
+        totalCost
+      };
+
+      namedBOMs.push(newBOM);
+      localStorage.setItem(BOMStorage.NAMED_BOMS_KEY, JSON.stringify(namedBOMs));
+      
+      // Set as current BOM
+      localStorage.setItem(BOMStorage.CURRENT_BOM_KEY, bomId);
+      
+      return bomId;
+    } catch (error) {
+      console.error('Failed to save named BOM:', error);
+      throw error;
+    }
+  },
+
+  updateNamedBOM: (bomId: string, bomData: BOMItem[]) => {
+    try {
+      const namedBOMs = BOMStorage.getNamedBOMs();
+      const bomIndex = namedBOMs.findIndex(bom => bom.id === bomId);
+      
+      if (bomIndex === -1) {
+        throw new Error('BOM not found');
+      }
+
+      const totalCost = bomData.reduce((sum, item) => sum + item.extendedCost, 0);
+      
+      namedBOMs[bomIndex] = {
+        ...namedBOMs[bomIndex],
+        bomData,
+        lastModified: new Date().toISOString(),
+        totalItems: bomData.length,
+        totalCost
+      };
+
+      localStorage.setItem(BOMStorage.NAMED_BOMS_KEY, JSON.stringify(namedBOMs));
+      return true;
+    } catch (error) {
+      console.error('Failed to update named BOM:', error);
+      return false;
+    }
+  },
+
+  renameNamedBOM: (bomId: string, newName: string, newDescription: string) => {
+    try {
+      const namedBOMs = BOMStorage.getNamedBOMs();
+      const bomIndex = namedBOMs.findIndex(bom => bom.id === bomId);
+      
+      if (bomIndex === -1) {
+        throw new Error('BOM not found');
+      }
+
+      namedBOMs[bomIndex] = {
+        ...namedBOMs[bomIndex],
+        name: newName.trim(),
+        description: newDescription.trim(),
+        lastModified: new Date().toISOString()
+      };
+
+      localStorage.setItem(BOMStorage.NAMED_BOMS_KEY, JSON.stringify(namedBOMs));
+      return true;
+    } catch (error) {
+      console.error('Failed to rename BOM:', error);
+      return false;
+    }
+  },
+
+  getNamedBOMs: (): NamedBOM[] => {
+    try {
+      const data = localStorage.getItem(BOMStorage.NAMED_BOMS_KEY);
+      return data ? JSON.parse(data) : [];
+    } catch (error) {
+      console.error('Failed to load named BOMs:', error);
+      return [];
+    }
+  },
+
+  getNamedBOM: (bomId: string): NamedBOM | null => {
+    try {
+      const namedBOMs = BOMStorage.getNamedBOMs();
+      return namedBOMs.find(bom => bom.id === bomId) || null;
+    } catch (error) {
+      console.error('Failed to load named BOM:', error);
+      return null;
+    }
+  },
+
+  deleteNamedBOM: (bomId: string) => {
+    try {
+      const namedBOMs = BOMStorage.getNamedBOMs();
+      const filteredBOMs = namedBOMs.filter(bom => bom.id !== bomId);
+      localStorage.setItem(BOMStorage.NAMED_BOMS_KEY, JSON.stringify(filteredBOMs));
+      
+      // If this was the current BOM, clear current BOM
+      const currentBOMId = localStorage.getItem(BOMStorage.CURRENT_BOM_KEY);
+      if (currentBOMId === bomId) {
+        localStorage.removeItem(BOMStorage.CURRENT_BOM_KEY);
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('Failed to delete named BOM:', error);
+      return false;
+    }
+  },
+
+  getCurrentBOMId: (): string | null => {
+    return localStorage.getItem(BOMStorage.CURRENT_BOM_KEY);
+  },
+
+  setCurrentBOM: (bomId: string) => {
+    localStorage.setItem(BOMStorage.CURRENT_BOM_KEY, bomId);
+  },
+
+  clearCurrentBOM: () => {
+    localStorage.removeItem(BOMStorage.CURRENT_BOM_KEY);
+  },
+
   saveInventory: (inventoryData: BOMItem[]) => {
     try {
       localStorage.setItem(BOMStorage.INVENTORY_KEY, JSON.stringify(inventoryData));
@@ -131,26 +267,6 @@ const BOMStorage = {
     } catch (error) {
       console.error('Failed to load inventory data:', error);
       return [];
-    }
-  },
-
-  saveTemplates: (templates: Template[]) => {
-    try {
-      localStorage.setItem(BOMStorage.TEMPLATES_KEY, JSON.stringify(templates));
-      return true;
-    } catch (error) {
-      console.error('Failed to save templates:', error);
-      return false;
-    }
-  },
-
-  loadTemplates: () => {
-    try {
-      const data = localStorage.getItem(BOMStorage.TEMPLATES_KEY);
-      return data ? JSON.parse(data) : BOMStorage.getDefaultTemplates();
-    } catch (error) {
-      console.error('Failed to load templates:', error);
-      return BOMStorage.getDefaultTemplates();
     }
   },
   
@@ -186,123 +302,83 @@ const BOMStorage = {
     };
     reader.readAsText(file);
   },
-
-  getDefaultTemplates: () => [
-    {
-      id: 'basic-electronics',
-      name: 'Basic Electronics Kit',
-      description: 'Common electronic components',
-      parts: [
-        { category: 'Resistor', description: '10K Ohm 1% 1/4W', quantity: 50, unitCost: 0.12, supplier: 'DigiKey' },
-        { category: 'Capacitor', description: '100nF 50V X7R', quantity: 25, unitCost: 0.18, supplier: 'DigiKey' },
-        { category: 'IC', description: 'STM32F407VGT6 Microcontroller', quantity: 1, unitCost: 12.50, supplier: 'DigiKey' }
-      ]
-    },
-    {
-      id: 'mechanical-fasteners',
-      name: 'Mechanical Fasteners',
-      description: 'Standard bolts, nuts, washers',
-      parts: [
-        { category: 'Hardware', description: 'M3x10 Socket Head Cap Screw', quantity: 20, unitCost: 0.25, supplier: 'McMaster-Carr' },
-        { category: 'Hardware', description: 'M3 Hex Nut', quantity: 20, unitCost: 0.15, supplier: 'McMaster-Carr' },
-        { category: 'Hardware', description: 'M3 Washer', quantity: 20, unitCost: 0.10, supplier: 'McMaster-Carr' }
-      ]
-    }
-  ],
   
   getDefaultData: () => []
 };
 
 // CSV/Excel Import Service
 const ImportService = {
+  // Smart header detection to handle title rows and merged cells
+  detectActualHeaders: (lines: string[]) => {
+    console.log('🔍 Detecting actual headers from', lines.length, 'lines');
+    
+    for (let i = 0; i < Math.min(lines.length, 5); i++) { // Check first 5 lines
+      const row = lines[i].split(',').map(h => h.trim().replace(/"/g, ''));
+      console.log(`Row ${i}:`, row);
+      
+      // Skip if row is likely a title (has content in first cell but mostly empty after)
+      const nonEmptyCount = row.filter(cell => cell && cell.trim()).length;
+      const hasSpanningTitle = nonEmptyCount <= 2 && row[0] && row[0].length > 10;
+      
+      if (hasSpanningTitle) {
+        console.log(`⏭️ Skipping row ${i} - appears to be spanning title:`, row[0]);
+        continue;
+      }
+      
+      // Check if this looks like actual headers
+      const hasMultipleNonEmpty = nonEmptyCount >= 3;
+      const hasHeaderKeywords = row.some(cell => 
+        cell && /^(id|name|description|part|number|quantity|qty|cost|price|supplier|category|type|inventory|component|stock|min|lead|time|digikey|status)$/i.test(cell.trim())
+      );
+      
+      console.log(`Row ${i} analysis: nonEmpty=${nonEmptyCount}, hasKeywords=${hasHeaderKeywords}, keywords found:`, 
+        row.filter(cell => cell && /^(id|name|description|part|number|quantity|qty|cost|price|supplier|category|type|inventory|component|stock|min|lead|time|digikey|status)$/i.test(cell.trim()))
+      );
+      
+      if (hasMultipleNonEmpty && (hasHeaderKeywords || i > 0)) {
+        console.log(`✅ Found headers at row ${i}:`, row);
+        return { headerRow: i, headers: row };
+      }
+    }
+    
+    // Fallback to first row if no clear headers found
+    console.log('⚠️ No clear headers detected, using first row as fallback');
+    const fallbackHeaders = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+    return { headerRow: 0, headers: fallbackHeaders };
+  },
+
   parseCSV: (csvText: string) => {
     const lines = csvText.split('\n').filter(line => line.trim());
     if (lines.length < 2) return [];
 
-    // Smart header detection for CSV files
-    let headerLineIndex = 0;
-    let bestHeaders: string[] = [];
-    let maxColumns = 0;
-
-    // Look through first 5 lines to find the best header candidate
-    for (let i = 0; i < Math.min(5, lines.length); i++) {
-      const currentHeaders = lines[i].split(',').map(h => h.trim().replace(/"/g, ''));
-      const nonEmptyColumns = currentHeaders.filter(h => h && h.trim()).length;
-      
-      // Check if this line looks like headers
-      const hasHeaderKeywords = currentHeaders.some(header => {
-        const headerLower = header.toLowerCase();
-        return headerLower.includes('id') || 
-               headerLower.includes('name') || 
-               headerLower.includes('description') || 
-               headerLower.includes('cost') || 
-               headerLower.includes('quantity') || 
-               headerLower.includes('stock') || 
-               headerLower.includes('supplier') || 
-               headerLower.includes('part') ||
-               headerLower.includes('component') ||
-               headerLower.includes('inventory') ||
-               headerLower.includes('digikey') ||
-               headerLower.includes('status') ||
-               headerLower.includes('lead') ||
-               headerLower.includes('time');
-      });
-      
-      // Avoid title lines (usually have few meaningful columns)
-      const isLikelyTitle = nonEmptyColumns <= 2 || 
-                           (currentHeaders[0] && currentHeaders[0].toLowerCase().includes('system') && nonEmptyColumns < 5);
-      
-      console.log(`🔍 CSV Line ${i}:`, {
-        headers: currentHeaders.slice(0, 5),
-        nonEmptyColumns,
-        hasHeaderKeywords,
-        isLikelyTitle
-      });
-      
-      if (nonEmptyColumns > maxColumns && hasHeaderKeywords && !isLikelyTitle) {
-        headerLineIndex = i;
-        bestHeaders = currentHeaders;
-        maxColumns = nonEmptyColumns;
-        console.log(`✅ Found better CSV header candidate at line ${i}`);
-      }
-    }
-
-    console.log(`📋 Using CSV header line ${headerLineIndex}:`, bestHeaders);
+    const { headerRow, headers } = ImportService.detectActualHeaders(lines);
+    console.log('📋 Using headers from row', headerRow, ':', headers);
+    
     const data = [];
 
-    for (let i = headerLineIndex + 1; i < lines.length; i++) {
+    for (let i = headerRow + 1; i < lines.length; i++) {
       const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
-      if (values.length >= bestHeaders.length / 2) { // Allow some flexibility in column count
+      
+      // Skip rows that are clearly section headers or empty
+      const nonEmptyValues = values.filter(v => v && v.trim()).length;
+      if (nonEmptyValues === 0) continue;
+      
+      // Skip if it looks like a section header (first cell has content, rest mostly empty)
+      if (nonEmptyValues <= 2 && values[0] && values[0].length > 10) {
+        console.log('⏭️ Skipping section header:', values[0]);
+        continue;
+      }
+      
+      if (values.length >= headers.length - 2) { // Allow some flexibility in column count
         const row: { [key: string]: string } = {};
-        let hasData = false;
-        
-        bestHeaders.forEach((header, index) => {
-          const value = values[index] || '';
-          if (header && header.trim()) {
-            row[header] = value;
-            if (value && value.trim()) {
-              hasData = true;
-            }
-          }
+        headers.forEach((header, index) => {
+          row[header] = values[index] || '';
         });
-        
-        // Skip section headers and total lines
-        const firstValue = values[0] ? values[0].toLowerCase() : '';
-        const isDataRow = hasData && 
-                         !firstValue.includes('total') && 
-                         !firstValue.includes('component') && 
-                         !firstValue.includes('system') &&
-                         !firstValue.includes('external') &&
-                         !firstValue.includes('legacy') &&
-                         !firstValue.includes('overall');
-        
-        if (isDataRow) {
-          data.push(row);
-        }
+        data.push(row);
       }
     }
 
-    console.log('✅ CSV parsed with smart header detection:', data.slice(0, 3));
+    console.log('📊 Parsed', data.length, 'data rows');
     return data;
   },
 
@@ -325,111 +401,48 @@ const ImportService = {
           const sheetName = workbook.SheetNames[0];
           const worksheet = workbook.Sheets[sheetName];
           
-          // Try different parsing approaches
-          let processedData = [];
-          
-          // Enhanced Method 1: Smart header detection
+          // Method 1: Standard JSON parsing with smart header detection
           const jsonData = XLSX.utils.sheet_to_json(worksheet, { 
-            header: 1,  // Use array format to analyze structure
+            header: 1,  // Get raw row data
             defval: ''   // Default value for empty cells
           }) as any[][];
           
-          console.log('📊 Raw Excel data (Enhanced Method):', jsonData);
+          console.log('📊 Raw Excel data (Method 1):', jsonData);
           
           if (jsonData.length >= 2) {
-            // Find the actual header row by analyzing data structure
-            let headerRowIndex = 0;
-            let bestHeaderRow = jsonData[0];
-            let maxColumns = 0;
+            // Convert to CSV-like format for smart header detection
+            const csvLines = jsonData.map(row => 
+              row.map(cell => `"${String(cell || '')}"`).join(',')
+            );
             
-            // Look through first 5 rows to find the best header candidate
-            for (let i = 0; i < Math.min(5, jsonData.length); i++) {
-              const row = jsonData[i];
-              const nonEmptyColumns = row.filter(cell => cell && cell.toString().trim()).length;
-              
-              // Check if this row looks like a header:
-              // 1. Has multiple non-empty columns
-              // 2. Contains common header keywords
-              // 3. Not just a title (single column or merged appearance)
-              const hasHeaderKeywords = row.some((cell: any) => {
-                const cellStr = cell ? cell.toString().toLowerCase() : '';
-                return cellStr.includes('id') || 
-                       cellStr.includes('name') || 
-                       cellStr.includes('description') || 
-                       cellStr.includes('cost') || 
-                       cellStr.includes('quantity') || 
-                       cellStr.includes('stock') || 
-                       cellStr.includes('supplier') || 
-                       cellStr.includes('part') ||
-                       cellStr.includes('component') ||
-                       cellStr.includes('inventory') ||
-                       cellStr.includes('digikey') ||
-                       cellStr.includes('status') ||
-                       cellStr.includes('lead') ||
-                       cellStr.includes('time');
-              });
-              
-              // Avoid title rows (usually have few meaningful columns or span entire width as one field)
-              const isLikelyTitle = nonEmptyColumns <= 2 || 
-                                   (row[0] && row[0].toString().toLowerCase().includes('system') && nonEmptyColumns < 5);
-              
-              console.log(`🔍 Row ${i}:`, {
-                row: row.slice(0, 8),
-                nonEmptyColumns,
-                hasHeaderKeywords,
-                isLikelyTitle
-              });
-              
-              if (nonEmptyColumns > maxColumns && hasHeaderKeywords && !isLikelyTitle) {
-                headerRowIndex = i;
-                bestHeaderRow = row;
-                maxColumns = nonEmptyColumns;
-                console.log(`✅ Found better header candidate at row ${i}`);
-              }
-            }
-            
-            console.log(`📋 Using header row ${headerRowIndex}:`, bestHeaderRow);
+            const { headerRow, headers } = ImportService.detectActualHeaders(csvLines);
             
             // Check if we got proper column structure
-            if (Array.isArray(bestHeaderRow) && bestHeaderRow.length > 1) {
-              // Convert data starting from the row after headers
-              for (let i = headerRowIndex + 1; i < jsonData.length; i++) {
-                const dataRow = jsonData[i];
-                if (!dataRow || dataRow.length === 0) continue;
+            if (Array.isArray(headers) && headers.length > 1) {
+              const processedData = [];
+              for (let i = headerRow + 1; i < jsonData.length; i++) {
+                const row = jsonData[i];
+                if (!row || row.length === 0) continue;
                 
-                const row: any = {};
-                let hasData = false;
-                
-                bestHeaderRow.forEach((header: string, index: number) => {
-                  const cellValue = dataRow[index] || '';
-                  if (header && header.toString().trim()) {
-                    row[header.toString().trim()] = cellValue;
-                    if (cellValue && cellValue.toString().trim()) {
-                      hasData = true;
-                    }
-                  }
-                });
-                
-                // Only include rows that have some data and aren't section headers
-                const firstCell = dataRow[0] ? dataRow[0].toString().toLowerCase() : '';
-                const isDataRow = hasData && 
-                                 !firstCell.includes('total') && 
-                                 !firstCell.includes('component') && 
-                                 !firstCell.includes('system') &&
-                                 !firstCell.includes('external') &&
-                                 !firstCell.includes('legacy') &&
-                                 !firstCell.includes('overall');
-                
-                if (isDataRow) {
-                  processedData.push(row);
+                // Skip section headers in Excel
+                const nonEmptyCount = row.filter(cell => cell && String(cell).trim()).length;
+                if (nonEmptyCount <= 2 && row[0] && String(row[0]).length > 10) {
+                  console.log('⏭️ Skipping Excel section header:', row[0]);
+                  continue;
                 }
+                
+                const rowObj: { [key: string]: string } = {};
+                headers.forEach((header, index) => {
+                  rowObj[header] = String(row[index] || '');
+                });
+                processedData.push(rowObj);
               }
               
-              console.log('✅ Excel parsed successfully with smart header detection:', processedData.slice(0, 3));
+              console.log('✅ Excel parsed with smart headers (Method 1):', processedData);
               resolve(processedData);
               return;
             } else {
-              console.log('⚠️ Smart header detection failed - trying CSV conversion...');
+              console.log('⚠️ Method 1 failed - single column or malformed headers, trying CSV conversion...');
             }
           }
           
@@ -494,12 +507,12 @@ const ImportService = {
   normalizeImportedData: (rawData: any[]) => {
     return rawData.map((row: any, index: number) => {
       // Enhanced mapping to handle multiple CSV formats including Cannasol inventory format
-      const partNumber = row['Part Number'] || row['PartNumber'] || row['part_number'] || 
-                        row['Inventory ID'] || row['ID'] || row['inventory_id'] || 
+      const partNumber = row['Inventory ID'] || row['Part Number'] || row['PartNumber'] || row['part_number'] || 
+                        row['ID'] || row['inventory_id'] || 
                         `IMP-${Date.now()}-${index}`;
       
-      const description = row['Description'] || row['desc'] || row['description'] || 
-                         row['Component Name'] || row['component_name'] || row['name'] || 
+      const description = row['Component Name'] || row['Description'] || row['desc'] || row['description'] || 
+                         row['component_name'] || row['name'] || 
                          'Imported Part';
       
       // Smart category detection from component name
@@ -519,6 +532,8 @@ const ImportService = {
         else if (desc.includes('fuse')) category = 'Fuse';
         else if (desc.includes('antenna')) category = 'RF';
         else if (desc.includes('screw') || desc.includes('mount') || desc.includes('handle')) category = 'Hardware';
+        else if (desc.includes('attiny') || desc.includes('esp32')) category = 'IC';
+        else if (desc.includes('isolator') || desc.includes('opto')) category = 'IC';
       }
       
       // Handle various cost formats ($0.00, 0.00, etc.)
@@ -528,22 +543,26 @@ const ImportService = {
       }
       const unitCost = parseFloat(unitCostStr) || 0;
       
-      // Handle stock/quantity fields
-      const quantity = parseInt(row['Quantity'] || row['Qty'] || row['quantity'] || 
-                               row['Current Stock'] || row['current_stock'] || row['stock'] || '1') || 1;
+      // Handle stock/quantity fields - prefer Current Stock for inventory files
+      const quantity = parseInt(row['Current Stock'] || row['Quantity'] || row['Qty'] || row['quantity'] || 
+                               row['current_stock'] || row['stock'] || '1') || 1;
       
       const supplier = row['Supplier'] || row['supplier'] || row['Vendor'] || 'Unknown';
       
       // Handle DigiKey part numbers with various formats
-      const digikeyPN = row['DigiKey PN'] || row['DigiKeyPN'] || row['digikey_pn'] || 
-                       row['Digikey #'] || row['digikey_number'] || '';
+      const digikeyPN = row['Digikey #'] || row['DigiKey PN'] || row['DigiKeyPN'] || row['digikey_pn'] || 
+                       row['digikey_number'] || '';
       
-      // Status mapping
+      // Status mapping - handle your specific status values
       let status = row['Status'] || row['status'] || 'Active';
-      if (status.toLowerCase().includes('out of stock') || status.toLowerCase().includes('low stock')) {
-        status = 'Attention Required';
+      if (status.toLowerCase().includes('out of stock')) {
+        status = 'Out of Stock';
+      } else if (status.toLowerCase().includes('low stock')) {
+        status = 'Low Stock';
       } else if (status.toLowerCase().includes('legacy')) {
         status = 'Legacy';
+      } else if (status.toLowerCase().includes('in stock')) {
+        status = 'Active';
       } else {
         status = 'Active';
       }
@@ -899,6 +918,433 @@ const Badge = ({
     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${variants[variant]} ${className}`}>
       {children}
     </span>
+  );
+};
+
+// BOM Management Dialog Component
+const BOMManagementDialog = ({ 
+  isOpen, 
+  onClose, 
+  onLoadBOM, 
+  onSaveBOM, 
+  currentBOMId, 
+  currentBOMData 
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onLoadBOM: (bomId: string) => void;
+  onSaveBOM: (name: string, description: string) => void;
+  currentBOMId: string | null;
+  currentBOMData: BOMItem[];
+}) => {
+  const [namedBOMs, setNamedBOMs] = useState<NamedBOM[]>([]);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [showRenameDialog, setShowRenameDialog] = useState(false);
+  const [renamingBOM, setRenamingBOM] = useState<NamedBOM | null>(null);
+  const [saveName, setSaveName] = useState('');
+  const [saveDescription, setSaveDescription] = useState('');
+  const [sortBy, setSortBy] = useState<'name' | 'date' | 'cost'>('date');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  useEffect(() => {
+    if (isOpen) {
+      refreshBOMList();
+    }
+  }, [isOpen]);
+
+  const refreshBOMList = () => {
+    const boms = BOMStorage.getNamedBOMs();
+    setNamedBOMs(boms);
+  };
+
+  const handleSaveBOM = () => {
+    if (!saveName.trim()) {
+      alert('Please enter a name for your BOM');
+      return;
+    }
+
+    // Check for duplicate names
+    const existingBOM = namedBOMs.find(bom => 
+      bom.name.toLowerCase() === saveName.trim().toLowerCase()
+    );
+    
+    if (existingBOM) {
+      if (!confirm('A BOM with this name already exists. Do you want to overwrite it?')) {
+        return;
+      }
+      // Delete the existing BOM
+      BOMStorage.deleteNamedBOM(existingBOM.id);
+    }
+
+    try {
+      BOMStorage.saveNamedBOM(saveName, saveDescription, currentBOMData);
+      onSaveBOM(saveName, saveDescription);
+      setSaveName('');
+      setSaveDescription('');
+      setShowSaveDialog(false);
+      refreshBOMList();
+      
+      // Show success message
+      const toast = document.createElement('div');
+      toast.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-50';
+      toast.textContent = `BOM "${saveName}" saved successfully!`;
+      document.body.appendChild(toast);
+      setTimeout(() => document.body.removeChild(toast), 3000);
+    } catch (error) {
+      alert('Failed to save BOM: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
+  };
+
+  const handleRenameBOM = () => {
+    if (!renamingBOM || !saveName.trim()) {
+      alert('Please enter a valid name');
+      return;
+    }
+
+    try {
+      BOMStorage.renameNamedBOM(renamingBOM.id, saveName, saveDescription);
+      setSaveName('');
+      setSaveDescription('');
+      setShowRenameDialog(false);
+      setRenamingBOM(null);
+      refreshBOMList();
+    } catch (error) {
+      alert('Failed to rename BOM: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
+  };
+
+  const handleDeleteBOM = (bom: NamedBOM) => {
+    if (!confirm(`Are you sure you want to delete "${bom.name}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      BOMStorage.deleteNamedBOM(bom.id);
+      refreshBOMList();
+      
+      // Show success message
+      const toast = document.createElement('div');
+      toast.className = 'fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg z-50';
+      toast.textContent = `BOM "${bom.name}" deleted successfully!`;
+      document.body.appendChild(toast);
+      setTimeout(() => document.body.removeChild(toast), 3000);
+    } catch (error) {
+      alert('Failed to delete BOM: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(amount);
+  };
+
+  const sortedBOMs = [...namedBOMs].sort((a, b) => {
+    let comparison = 0;
+    
+    switch (sortBy) {
+      case 'name':
+        comparison = a.name.localeCompare(b.name);
+        break;
+      case 'date':
+        comparison = new Date(a.lastModified).getTime() - new Date(b.lastModified).getTime();
+        break;
+      case 'cost':
+        comparison = a.totalCost - b.totalCost;
+        break;
+    }
+    
+    return sortOrder === 'asc' ? comparison : -comparison;
+  });
+
+  const openRenameDialog = (bom: NamedBOM) => {
+    setRenamingBOM(bom);
+    setSaveName(bom.name);
+    setSaveDescription(bom.description);
+    setShowRenameDialog(true);
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <Card className="w-full max-w-6xl mx-4 p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center space-x-3">
+            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+              <FolderOpen className="text-blue-600" size={24} />
+            </div>
+            <div>
+              <h3 className="text-xl font-semibold">BOM Management</h3>
+              <p className="text-sm text-gray-600">Save, load, and manage your BOMs</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1 text-gray-500 hover:text-gray-700">
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center space-x-4">
+            <Button 
+              onClick={() => setShowSaveDialog(true)}
+              variant="primary"
+              disabled={currentBOMData.length === 0}
+            >
+              <Save size={16} />
+              Save Current BOM
+            </Button>
+            
+            <div className="flex items-center space-x-2">
+              <span className="text-sm text-gray-600">Sort by:</span>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as 'name' | 'date' | 'cost')}
+                className="text-sm border border-gray-300 rounded px-2 py-1"
+              >
+                <option value="date">Last Modified</option>
+                <option value="name">Name</option>
+                <option value="cost">Total Cost</option>
+              </select>
+              <button
+                onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                className="p-1 text-gray-500 hover:text-gray-700"
+              >
+                {sortOrder === 'asc' ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              </button>
+            </div>
+          </div>
+
+          <div className="text-sm text-gray-600">
+            {namedBOMs.length} saved BOM{namedBOMs.length !== 1 ? 's' : ''}
+          </div>
+        </div>
+
+        {/* BOM List */}
+        {namedBOMs.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <FolderOpen className="text-gray-400" size={32} />
+            </div>
+            <h4 className="text-lg font-semibold text-gray-900 mb-2">No Saved BOMs</h4>
+            <p className="text-gray-600 mb-4">Create your first named BOM by saving your current work.</p>
+            <Button 
+              onClick={() => setShowSaveDialog(true)}
+              disabled={currentBOMData.length === 0}
+            >
+              <Save size={16} />
+              Save Current BOM
+            </Button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+            {sortedBOMs.map((bom) => (
+              <Card key={bom.id} className={`p-4 hover:shadow-lg transition-shadow ${
+                currentBOMId === bom.id ? 'ring-2 ring-blue-500 bg-blue-50' : ''
+              }`}>
+                <div className="flex justify-between items-start mb-3">
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-semibold text-gray-900 truncate">{bom.name}</h4>
+                    {bom.description && (
+                      <p className="text-sm text-gray-600 line-clamp-2 mt-1">{bom.description}</p>
+                    )}
+                  </div>
+                  {currentBOMId === bom.id && (
+                    <Badge variant="info" className="ml-2 flex-shrink-0">
+                      Current
+                    </Badge>
+                  )}
+                </div>
+
+                <div className="space-y-2 text-sm text-gray-600 mb-4">
+                  <div className="flex justify-between">
+                    <span>Items:</span>
+                    <span className="font-medium">{bom.totalItems}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Total Cost:</span>
+                    <span className="font-medium text-green-600">{formatCurrency(bom.totalCost)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Modified:</span>
+                    <span className="font-medium">{formatDate(bom.lastModified)}</span>
+                  </div>
+                </div>
+
+                <div className="flex space-x-2">
+                  <Button
+                    size="sm"
+                    variant={currentBOMId === bom.id ? "secondary" : "primary"}
+                    onClick={() => onLoadBOM(bom.id)}
+                    disabled={currentBOMId === bom.id}
+                    className="flex-1"
+                  >
+                    {currentBOMId === bom.id ? (
+                      <>
+                        <CheckCircle size={14} />
+                        Loaded
+                      </>
+                    ) : (
+                      <>
+                        <FolderOpen size={14} />
+                        Load
+                      </>
+                    )}
+                  </Button>
+                  
+                  <button
+                    onClick={() => openRenameDialog(bom)}
+                    className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded"
+                    title="Rename BOM"
+                  >
+                    <Edit2 size={14} />
+                  </button>
+                  
+                  <button
+                    onClick={() => handleDeleteBOM(bom)}
+                    className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded"
+                    title="Delete BOM"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {/* Save Dialog */}
+        {showSaveDialog && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-60">
+            <Card className="w-full max-w-md mx-4 p-6">
+              <h4 className="text-lg font-semibold mb-4">Save BOM</h4>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    BOM Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={saveName}
+                    onChange={(e) => setSaveName(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="e.g., Production BOM v1.0"
+                    maxLength={50}
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Description
+                  </label>
+                  <textarea
+                    value={saveDescription}
+                    onChange={(e) => setSaveDescription(e.target.value)}
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Optional description..."
+                    maxLength={200}
+                  />
+                </div>
+                
+                <div className="text-sm text-gray-600">
+                  This BOM contains {currentBOMData.length} items with a total cost of {formatCurrency(
+                    currentBOMData.reduce((sum, item) => sum + item.extendedCost, 0)
+                  )}.
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-3 mt-6">
+                <Button 
+                  variant="outline" 
+                  onClick={() => {
+                    setShowSaveDialog(false);
+                    setSaveName('');
+                    setSaveDescription('');
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button onClick={handleSaveBOM} disabled={!saveName.trim()}>
+                  <Save size={16} />
+                  Save BOM
+                </Button>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* Rename Dialog */}
+        {showRenameDialog && renamingBOM && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-60">
+            <Card className="w-full max-w-md mx-4 p-6">
+              <h4 className="text-lg font-semibold mb-4">Rename BOM</h4>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    BOM Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={saveName}
+                    onChange={(e) => setSaveName(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="e.g., Production BOM v1.0"
+                    maxLength={50}
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Description
+                  </label>
+                  <textarea
+                    value={saveDescription}
+                    onChange={(e) => setSaveDescription(e.target.value)}
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Optional description..."
+                    maxLength={200}
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-3 mt-6">
+                <Button 
+                  variant="outline" 
+                  onClick={() => {
+                    setShowRenameDialog(false);
+                    setRenamingBOM(null);
+                    setSaveName('');
+                    setSaveDescription('');
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button onClick={handleRenameBOM} disabled={!saveName.trim()}>
+                  <Edit2 size={16} />
+                  Rename
+                </Button>
+              </div>
+            </Card>
+          </div>
+        )}
+      </Card>
+    </div>
   );
 };
 
@@ -1896,106 +2342,6 @@ const ImportDialog = ({
   );
 };
 
-// Template Dialog Component
-const TemplateDialog = ({ 
-  isOpen, 
-  onClose, 
-  onApply 
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  onApply: (items: any[]) => void;
-}) => {
-  const [templates] = useState(BOMStorage.loadTemplates());
-
-  const handleApplyTemplate = (template: any) => {
-    const templateParts = template.parts.map((part: any, index: number) => ({
-      id: Date.now() + index,
-      partNumber: PartNumberService.generatePartNumber(part.category, []),
-      description: part.description,
-      category: part.category,
-      quantity: part.quantity,
-      unit: 'EA',
-      unitCost: part.unitCost,
-      extendedCost: part.quantity * part.unitCost,
-      supplier: part.supplier,
-      leadTime: 1,
-      revision: 'A',
-      status: 'Active',
-      requiredFor: 'Base System',
-      digikeyPN: '',
-      manufacturerPN: ''
-    }));
-
-    onApply(templateParts);
-    onClose();
-  };
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <Card className="w-full max-w-4xl mx-4 p-6 max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center mb-6">
-          <div className="flex items-center space-x-3">
-            <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-              <BookOpen className="text-purple-600" size={24} />
-            </div>
-            <div>
-              <h3 className="text-xl font-semibold">Part Templates</h3>
-              <p className="text-sm text-gray-600">Quickly add common part sets</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-1 text-gray-500 hover:text-gray-700">
-            <X size={20} />
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {templates.map((template: Template) => (
-            <Card key={template.id} className="p-4 border-2 border-gray-200 hover:border-blue-300 transition-colors">
-              <div className="flex justify-between items-start mb-3">
-                <div>
-                  <h4 className="font-semibold">{template.name}</h4>
-                  <p className="text-sm text-gray-600">{template.description}</p>
-                </div>
-                <Badge variant="info">{template.parts.length} parts</Badge>
-              </div>
-
-              <div className="mb-4">
-                <div className="text-xs text-gray-500 mb-2">Preview:</div>
-                <div className="space-y-1">
-                  {template.parts.slice(0, 3).map((part: any, index: number) => (
-                    <div key={index} className="text-xs text-gray-700 flex justify-between">
-                      <span>{part.description}</span>
-                      <span>${(part.quantity * part.unitCost).toFixed(2)}</span>
-                    </div>
-                  ))}
-                  {template.parts.length > 3 && (
-                    <div className="text-xs text-gray-500">
-                      +{template.parts.length - 3} more parts
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex justify-between items-center">
-                <div className="text-sm font-semibold">
-                  Total: ${template.parts.reduce((sum: number, part: any) => sum + (part.quantity * part.unitCost), 0).toFixed(2)}
-                </div>
-                <Button size="sm" onClick={() => handleApplyTemplate(template)}>
-                  <Target size={14} />
-                  Apply
-                </Button>
-              </div>
-            </Card>
-          ))}
-        </div>
-      </Card>
-    </div>
-  );
-};
-
 // Header Component
 const Header = ({ 
   lastSaved, 
@@ -2004,8 +2350,9 @@ const Header = ({
   onImport, 
   onBulkAdd, 
   onImportFile, 
-  onTemplates, 
-  onNLPAdd 
+  onNLPAdd,
+  onBOMManagement,
+  currentBOMName 
 }: {
   lastSaved: Date | null;
   onSave: () => void;
@@ -2013,8 +2360,9 @@ const Header = ({
   onImport: (file: File) => void;
   onBulkAdd: () => void;
   onImportFile: () => void;
-  onTemplates: () => void;
   onNLPAdd: () => void;
+  onBOMManagement: () => void;
+  currentBOMName: string | null;
 }) => {
   const [showDropdown, setShowDropdown] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -2027,110 +2375,105 @@ const Header = ({
     const file = event.target.files?.[0];
     if (file) {
       onImport(file);
+      event.target.value = ''; // Reset file input
     }
+    setShowDropdown(false);
   };
 
   return (
     <div className="bg-white border-b-2 border-gray-200 shadow-sm">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+      <div className="max-w-7xl mx-auto px-4 py-4">
+        <div className="flex items-center justify-between">
+          {/* Logo and Title */}
           <div className="flex items-center space-x-4">
-            <div className="w-10 h-10 bg-gray-100 border-2 border-gray-300 rounded-md flex items-center justify-center">
-              <span className="text-sm font-bold text-gray-700">CT</span>
+            <div className="flex items-center space-x-2">
+              <div className="w-10 h-10 bg-gray-900 rounded-lg flex items-center justify-center">
+                <Package className="text-white" size={24} />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-gray-900">BOM Generator</h1>
+                <p className="text-sm text-gray-600">Cannasol Technologies</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-xl font-semibold text-gray-900">Cannasol Technologies</h1>
-              <p className="text-sm text-gray-600">BOM Management System</p>
-            </div>
-          </div>
-          <div className="flex items-center space-x-2">
-            {lastSaved && (
-              <div className="text-sm text-gray-500 mr-4">
-                Last saved: {lastSaved.toLocaleTimeString()}
+            
+            {/* Current BOM Name */}
+            {currentBOMName && (
+              <div className="hidden md:flex items-center space-x-2 px-3 py-1.5 bg-blue-50 rounded-lg border border-blue-200">
+                <FolderOpen size={16} className="text-blue-600" />
+                <span className="text-sm font-medium text-blue-800">{currentBOMName}</span>
               </div>
             )}
-            <button 
-              onClick={onSave}
-              className="flex items-center space-x-1 px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50 transition-colors text-gray-700"
-              title="Save to Browser Storage"
-            >
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center space-x-3">
+            {/* Quick Save */}
+            <Button onClick={onSave} variant="outline" size="sm">
               <Save size={16} />
-              <span>Save</span>
-            </button>
-            
+              <span className="hidden sm:inline">Save</span>
+            </Button>
+
+            {/* BOM Management */}
+            <Button onClick={onBOMManagement} variant="outline" size="sm">
+              <FolderOpen size={16} />
+              <span className="hidden sm:inline">BOMs</span>
+            </Button>
+
+            {/* Add Menu */}
             <div className="relative">
-              <button 
+              <Button 
                 onClick={() => setShowDropdown(!showDropdown)}
-                className="flex items-center space-x-1 px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50 transition-colors text-gray-700"
+                variant="primary"
+                size="sm"
               >
-                <PlusCircle size={16} />
-                <span>Add</span>
+                <Plus size={16} />
+                <span className="hidden sm:inline">Add</span>
                 <ChevronDown size={14} />
-              </button>
-              
+              </Button>
+
               {showDropdown && (
-                <div className="absolute right-0 mt-2 w-56 bg-white border border-gray-200 rounded-md shadow-lg z-10">
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
                   <div className="py-1">
-                    <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase border-b border-gray-100">
-                      Smart Features
-                    </div>
-                    <button 
+                    <button
                       onClick={() => { onNLPAdd(); setShowDropdown(false); }}
-                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-purple-50 flex items-center space-x-2"
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
                     >
-                      <span className="text-lg">🤖</span>
-                      <div>
-                        <div>Natural Language Add</div>
-                        <div className="text-xs text-gray-500">Describe components in plain text</div>
-                      </div>
+                      <Zap size={16} />
+                      <span>Smart Add (NLP)</span>
                     </button>
-                    <div className="border-t border-gray-100 mt-1 pt-1">
-                      <div className="px-3 py-1 text-xs font-semibold text-gray-500 uppercase">
-                        Traditional
-                      </div>
-                      <button 
-                        onClick={() => { onBulkAdd(); setShowDropdown(false); }}
-                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center space-x-2"
-                      >
-                        <Layers size={16} />
-                        <span>Bulk Add</span>
-                      </button>
-                      <button 
-                        onClick={() => { onImportFile(); setShowDropdown(false); }}
-                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center space-x-2"
-                      >
-                        <Database size={16} />
-                        <span>Import File</span>
-                      </button>
-                      <button 
-                        onClick={() => { onTemplates(); setShowDropdown(false); }}
-                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center space-x-2"
-                      >
-                        <BookOpen size={16} />
-                        <span>Templates</span>
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => { onBulkAdd(); setShowDropdown(false); }}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
+                    >
+                      <Layers size={16} />
+                      <span>Bulk Add</span>
+                    </button>
+                    <button
+                      onClick={() => { onImportFile(); setShowDropdown(false); }}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
+                    >
+                      <Database size={16} />
+                      <span>Import CSV/Excel</span>
+                    </button>
+                    <button
+                      onClick={handleImportClick}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
+                    >
+                      <Upload size={16} />
+                      <span>Import JSON</span>
+                    </button>
                   </div>
                 </div>
               )}
             </div>
 
-            <button 
-              onClick={onExport}
-              className="flex items-center space-x-1 px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50 transition-colors text-gray-700"
-              title="Export JSON File"
-            >
+            {/* Export Button */}
+            <Button onClick={onExport} variant="outline" size="sm">
               <Download size={16} />
-              <span>Export</span>
-            </button>
-            <button 
-              onClick={handleImportClick}
-              className="flex items-center space-x-1 px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50 transition-colors text-gray-700"
-              title="Import JSON File"
-            >
-              <FolderOpen size={16} />
-              <span>Import</span>
-            </button>
+              <span className="hidden sm:inline">Export</span>
+            </Button>
+
+            {/* Hidden file input for JSON import */}
             <input
               ref={fileInputRef}
               type="file"
@@ -2140,6 +2483,13 @@ const Header = ({
             />
           </div>
         </div>
+
+        {/* Last Saved Indicator */}
+        {lastSaved && (
+          <div className="mt-2 text-xs text-gray-500">
+            Last saved: {lastSaved.toLocaleDateString()} at {lastSaved.toLocaleTimeString()}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -2541,36 +2891,115 @@ const BOMManager = () => {
   const [editValue, setEditValue] = useState('');
   const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
   
+  // BOM Management states
+  const [currentBOMId, setCurrentBOMId] = useState<string | null>(null);
+  const [currentBOMName, setCurrentBOMName] = useState<string | null>(null);
+  
   // Dialog states
   const [showBulkAdd, setShowBulkAdd] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
-  const [showTemplateDialog, setShowTemplateDialog] = useState(false);
   const [showNLPAdd, setShowNLPAdd] = useState(false);
+  const [showBOMManagement, setShowBOMManagement] = useState(false);
 
   // Load data on component mount
   useEffect(() => {
-    const loadedData = BOMStorage.load();
+    const currentBOMId = BOMStorage.getCurrentBOMId();
+    if (currentBOMId) {
+      const namedBOM = BOMStorage.getNamedBOM(currentBOMId);
+      if (namedBOM) {
+        setBomData(namedBOM.bomData);
+        setFilteredData(namedBOM.bomData);
+        setCurrentBOMId(namedBOM.id);
+        setCurrentBOMName(namedBOM.name);
+      } else {
+        // BOM not found, load legacy data
+        const loadedData = BOMStorage.load();
+        setBomData(loadedData);
+        setFilteredData(loadedData);
+        BOMStorage.clearCurrentBOM();
+      }
+    } else {
+      // No current BOM, load legacy data
+      const loadedData = BOMStorage.load();
+      setBomData(loadedData);
+      setFilteredData(loadedData);
+    }
+    
     const loadedInventory = BOMStorage.loadInventory();
-    setBomData(loadedData);
-    setFilteredData(loadedData);
     setInventory(loadedInventory);
   }, []);
 
   // Auto-save every 30 seconds
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (bomData.length > 0) {
-        handleSave();
-      }
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [bomData]);
+    if (bomData.length > 0 && currentBOMId) {
+      const autoSaveInterval = setInterval(() => {
+        BOMStorage.updateNamedBOM(currentBOMId, bomData);
+        setLastSaved(new Date());
+      }, 30000);
+      return () => clearInterval(autoSaveInterval);
+    }
+  }, [bomData, currentBOMId]);
 
   const handleSave = () => {
-    const success = BOMStorage.save(bomData);
-    if (success) {
-      setLastSaved(new Date());
+    if (currentBOMId) {
+      // Update existing named BOM
+      const success = BOMStorage.updateNamedBOM(currentBOMId, bomData);
+      if (success) {
+        setLastSaved(new Date());
+      }
+    } else {
+      // Legacy save to localStorage
+      const success = BOMStorage.save(bomData);
+      if (success) {
+        setLastSaved(new Date());
+      }
     }
+  };
+
+  const handleLoadBOM = (bomId: string) => {
+    const namedBOM = BOMStorage.getNamedBOM(bomId);
+    if (namedBOM) {
+      setBomData(namedBOM.bomData);
+      setFilteredData(namedBOM.bomData);
+      setCurrentBOMId(namedBOM.id);
+      setCurrentBOMName(namedBOM.name);
+      BOMStorage.setCurrentBOM(bomId);
+      setShowBOMManagement(false);
+      
+      // Show success message
+      const toast = document.createElement('div');
+      toast.className = 'fixed top-4 right-4 bg-blue-500 text-white px-4 py-2 rounded-lg shadow-lg z-50';
+      toast.textContent = `Loaded BOM: ${namedBOM.name}`;
+      document.body.appendChild(toast);
+      setTimeout(() => document.body.removeChild(toast), 3000);
+    }
+  };
+
+  const handleSaveBOM = (name: string, description: string) => {
+    try {
+      const bomId = BOMStorage.saveNamedBOM(name, description, bomData);
+      setCurrentBOMId(bomId);
+      setCurrentBOMName(name);
+      BOMStorage.setCurrentBOM(bomId);
+      setLastSaved(new Date());
+    } catch (error) {
+      console.error('Failed to save named BOM:', error);
+    }
+  };
+
+  const handleNewBOM = () => {
+    if (bomData.length > 0) {
+      if (!confirm('Create a new BOM? Unsaved changes will be lost.')) {
+        return;
+      }
+    }
+    
+    setBomData([]);
+    setFilteredData([]);
+    setCurrentBOMId(null);
+    setCurrentBOMName(null);
+    BOMStorage.clearCurrentBOM();
+    setSelectedItems(new Set());
   };
 
   const handleSearch = (searchTerm: string) => {
@@ -2607,21 +3036,24 @@ const BOMManager = () => {
     const updatedData = [...bomData, ...newItems];
     setBomData(updatedData);
     setFilteredData(updatedData);
-    handleSave();
+    if (currentBOMId) {
+      BOMStorage.updateNamedBOM(currentBOMId, updatedData);
+    } else {
+      BOMStorage.save(updatedData);
+    }
+    setLastSaved(new Date());
   };
 
   const handleImportItems = (importedItems: BOMItem[]) => {
     const updatedData = [...bomData, ...importedItems];
     setBomData(updatedData);
     setFilteredData(updatedData);
-    handleSave();
-  };
-
-  const handleTemplateApply = (templateItems: BOMItem[]) => {
-    const updatedData = [...bomData, ...templateItems];
-    setBomData(updatedData);
-    setFilteredData(updatedData);
-    handleSave();
+    if (currentBOMId) {
+      BOMStorage.updateNamedBOM(currentBOMId, updatedData);
+    } else {
+      BOMStorage.save(updatedData);
+    }
+    setLastSaved(new Date());
   };
 
   const handleAddItem = () => {
@@ -2852,14 +3284,26 @@ const BOMManager = () => {
         })}
         onBulkAdd={() => setShowBulkAdd(true)}
         onImportFile={() => setShowImportDialog(true)}
-        onTemplates={() => setShowTemplateDialog(true)}
         onNLPAdd={() => setShowNLPAdd(true)}
+        onBOMManagement={() => setShowBOMManagement(true)}
+        currentBOMName={currentBOMName}
       />
       
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-semibold text-gray-900">Bill of Materials</h2>
+          <div className="flex items-center space-x-4">
+            <h2 className="text-2xl font-semibold text-gray-900">Bill of Materials</h2>
+            {currentBOMName && (
+              <Badge variant="info" className="text-sm">
+                {currentBOMName}
+              </Badge>
+            )}
+          </div>
           <div className="flex space-x-2">
+            <Button variant="outline" onClick={handleNewBOM}>
+              <Plus size={16} />
+              New BOM
+            </Button>
             <DigikeyShoppingList bomData={bomData} />
             <Button variant="primary" onClick={handleAddItem}>
               <Plus size={16} />
@@ -3113,6 +3557,15 @@ const BOMManager = () => {
       </div>
       
       {/* Dialogs */}
+      <BOMManagementDialog
+        isOpen={showBOMManagement}
+        onClose={() => setShowBOMManagement(false)}
+        onLoadBOM={handleLoadBOM}
+        onSaveBOM={handleSaveBOM}
+        currentBOMId={currentBOMId}
+        currentBOMData={bomData}
+      />
+      
       <NLPAddDialog
         isOpen={showNLPAdd}
         onClose={() => setShowNLPAdd(false)}
@@ -3133,12 +3586,6 @@ const BOMManager = () => {
         isOpen={showImportDialog}
         onClose={() => setShowImportDialog(false)}
         onImport={handleImportItems}
-      />
-      
-      <TemplateDialog
-        isOpen={showTemplateDialog}
-        onClose={() => setShowTemplateDialog(false)}
-        onApply={handleTemplateApply}
       />
       
       <button 
