@@ -1,16 +1,99 @@
-// EasyEDA Integration Service
-// Provides component search, selection, and data integration with EasyEDA
+// EasyEDA Integration Service with LCSC API
+// Enhanced with LCSC component search and real-time pricing
 
 class EasyEDAService {
   constructor() {
     this.baseUrl = 'https://easyeda.com';
     this.oshwlabUrl = 'https://oshwlab.com';
     this.apiUrl = 'https://modules.easyeda.com/api';
+    this.lcscApiUrl = 'https://wmsc.lcsc.com/wmsc/product/list';
     this.componentCache = new Map();
+    this.lcscCache = new Map();
   }
 
-  // Search for components in EasyEDA library
+  // Enhanced search using LCSC API first, then EasyEDA
   async searchComponents(query) {
+    try {
+      // Try LCSC API first (official EasyEDA supplier)
+      const lcscResults = await this.searchLCSCComponents(query);
+      if (lcscResults.length > 0) {
+        return await this.enhanceWithEasyEDAData(lcscResults);
+      }
+      
+      // Fallback to EasyEDA API
+      return await this.searchEasyEDAComponents(query);
+    } catch (error) {
+      console.warn('Component search failed, using fallback:', error);
+      return this.getFallbackResults(query);
+    }
+  }
+
+  // Search LCSC API for components
+  async searchLCSCComponents(query) {
+    const cacheKey = `lcsc_${query}`;
+    if (this.lcscCache.has(cacheKey)) {
+      return this.lcscCache.get(cacheKey);
+    }
+
+    try {
+      const searchParams = new URLSearchParams({
+        keyword: query,
+        currentPage: '1',
+        pageSize: '20',
+        searchSource: 'search',
+        simpleSearch: 'true'
+      });
+
+      const response = await fetch(`${this.lcscApiUrl}?${searchParams}`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'BOM-Generator/1.0',
+          'Referer': 'https://lcsc.com'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`LCSC API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const components = this.parseLCSCResponse(data);
+      this.lcscCache.set(cacheKey, components);
+      return components;
+    } catch (error) {
+      console.error('LCSC API search failed:', error);
+      return [];
+    }
+  }
+
+  // Parse LCSC API response
+  parseLCSCResponse(data) {
+    if (!data.result || !data.result.productSearchResultVO || !Array.isArray(data.result.productSearchResultVO.productList)) {
+      return [];
+    }
+
+    return data.result.productSearchResultVO.productList.map(product => ({
+      id: product.productCode,
+      title: product.productModel,
+      partNumber: product.productCode,
+      lcscPartNumber: product.productCode,
+      manufacturer: product.brandNameEn,
+      description: product.productIntroEn,
+      package: product.encapStandard,
+      datasheet: product.dataManualUrl,
+      stock: product.stockNumber || 0,
+      pricing: product.productPriceList || [],
+      minOrder: product.minPacketUnit || 1,
+      lcscUrl: `https://lcsc.com/product-detail/${product.productCode}.html`,
+      category: product.catalogName,
+      parameters: product.paramVOList || [],
+      images: product.productImages || []
+    }));
+  }
+
+  // Search EasyEDA API (fallback)
+  async searchEasyEDAComponents(query) {
     try {
       // EasyEDA component search endpoint
       const searchUrl = `${this.apiUrl}/components/search`;
@@ -33,15 +116,56 @@ class EasyEDAService {
       }
 
       const data = await response.json();
-      return this.parseSearchResults(data);
+      return this.parseEasyEDAResults(data);
     } catch (error) {
-      console.warn('EasyEDA search failed, using fallback:', error);
-      return this.getFallbackResults(query);
+      console.warn('EasyEDA search failed:', error);
+      return [];
+    }
+  }
+
+  // Enhance LCSC components with EasyEDA symbol/footprint data
+  async enhanceWithEasyEDAData(lcscComponents) {
+    const enhanced = [];
+    
+    for (const lcscComp of lcscComponents) {
+      try {
+        // Try to find matching EasyEDA component
+        const easyedaMatch = await this.findEasyEDAMatch(lcscComp.partNumber);
+        
+        enhanced.push({
+          ...lcscComp,
+          footprint: easyedaMatch?.footprint,
+          symbol: easyedaMatch?.symbol,
+          easyedaUrl: easyedaMatch ? `${this.baseUrl}/component/${easyedaMatch.uuid}` : '',
+          easyedaId: easyedaMatch?.uuid
+        });
+      } catch (error) {
+        console.warn(`Failed to enhance ${lcscComp.partNumber}:`, error);
+        enhanced.push(lcscComp);
+      }
+    }
+    
+    return enhanced;
+  }
+
+  // Find matching EasyEDA component
+  async findEasyEDAMatch(lcscPartNumber) {
+    try {
+      const response = await fetch(`${this.apiUrl}/components/search?wd=${lcscPartNumber}&lcsc=${lcscPartNumber}`, {
+        headers: { 'Accept': 'application/json' }
+      });
+
+      if (!response.ok) return null;
+
+      const data = await response.json();
+      return data.result && data.result.length > 0 ? data.result[0] : null;
+    } catch (error) {
+      return null;
     }
   }
 
   // Parse search results from EasyEDA API
-  parseSearchResults(data) {
+  parseEasyEDAResults(data) {
     if (!data.result || !Array.isArray(data.result)) {
       return [];
     }
@@ -178,6 +302,91 @@ class EasyEDAService {
       data: easyedaFormat,
       csv: this.convertToCSV(easyedaFormat),
       timestamp: new Date().toISOString()
+    };
+  }
+
+  // Get component pricing from LCSC
+  getComponentPricing(component, quantity = 1) {
+    if (!component.pricing || !Array.isArray(component.pricing) || component.pricing.length === 0) {
+      return null;
+    }
+
+    // Find applicable price tier
+    let unitPrice = 0;
+    for (const priceBreak of component.pricing) {
+      if (quantity >= priceBreak.startQty && quantity <= priceBreak.endQty) {
+        unitPrice = priceBreak.productPrice;
+        break;
+      }
+    }
+
+    // Use first price if no exact match
+    if (unitPrice === 0) {
+      unitPrice = component.pricing[0].productPrice;
+    }
+
+    return {
+      unitPrice,
+      totalPrice: unitPrice * quantity,
+      priceBreaks: component.pricing.map(p => ({
+        qty: p.startQty,
+        price: p.productPrice
+      })),
+      currency: 'USD',
+      minOrder: component.minOrder || 1
+    };
+  }
+
+  // Check component availability
+  checkAvailability(component) {
+    return {
+      inStock: (component.stock || 0) > 0,
+      stockLevel: component.stock || 0,
+      minimumOrder: component.minOrder || 1,
+      leadTime: (component.stock || 0) > 1000 ? '1-2 days' : '3-7 days'
+    };
+  }
+
+  // Generate comprehensive component URLs
+  generateComponentUrls(component) {
+    const searchQuery = encodeURIComponent(component.partNumber || component.title);
+    
+    return {
+      // LCSC product page (primary)
+      lcsc: component.lcscUrl || `https://lcsc.com/search?q=${searchQuery}`,
+      // EasyEDA component (if available)
+      easyeda: component.easyedaUrl || `${this.oshwlabUrl}/search?wd=${searchQuery}`,
+      // Direct integration URLs
+      addToSchematic: component.easyedaId ? 
+        `${this.baseUrl}/editor#import=component:${component.easyedaId}` : null,
+      addToPCB: component.footprint ? 
+        `${this.baseUrl}/editor#import=footprint:${component.footprint}` : null,
+      // Search URLs
+      searchSymbol: `${this.baseUrl}/editor#search=symbol:${searchQuery}`,
+      searchFootprint: `${this.baseUrl}/editor#search=footprint:${searchQuery}`
+    };
+  }
+
+  // Generate BOM data for EasyEDA import
+  generateEasyEDABOM(bomItems) {
+    const bomData = bomItems.map((item, index) => ({
+      'Item#': index + 1,
+      'Qty': item.quantity || 1,
+      'Reference': item.reference || `R${index + 1}`,
+      'Part': item.partNumber || '',
+      'Value': item.value || item.description || '',
+      'Package': item.package || '',
+      'Description': item.description || '',
+      'LCSC Part #': item.lcscPartNumber || item.partNumber || '',
+      'Manufacturer': item.manufacturer || '',
+      'Supplier': 'LCSC',
+      'Comment': item.comment || ''
+    }));
+
+    return {
+      csvData: this.convertToCSV(bomData),
+      jsonData: bomData,
+      easyedaImportUrl: `${this.baseUrl}/editor#import=bom`
     };
   }
 

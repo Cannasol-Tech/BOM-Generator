@@ -1,0 +1,222 @@
+name: Test Suite
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+        
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: |
+          npm ci
+          
+      - name: Run linting
+        run: |
+          npm run lint
+        continue-on-error: false
+        
+      - name: Run type checking
+        run: |
+          npx tsc --noEmit
+        continue-on-error: false
+        
+      - name: Run tests with coverage
+        run: |
+          npm run test:coverage -- --reporter=verbose --reporter=json --outputFile=test-results.json
+        env:
+          CI: true
+          
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-node-${{ matrix.node-version }}
+          path: |
+            test-results.json
+            coverage/
+            
+      - name: Generate test summary
+        if: always()
+        run: |
+          echo "## Test Results Summary for Node.js ${{ matrix.node-version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -f "test-results.json" ]; then
+            echo "### Test Execution Details" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
+            cat test-results.json >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ -d "coverage" ]; then
+            echo "### Coverage Report" >> $GITHUB_STEP_SUMMARY
+            echo "Coverage reports have been generated and uploaded as artifacts." >> $GITHUB_STEP_SUMMARY
+          fi
+          
+      - name: Comment test results on PR
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            
+            let comment = `## 🧪 Test Results for Node.js ${{ matrix.node-version }}\n\n`;
+            
+            try {
+              // Read test results if available
+              if (fs.existsSync('test-results.json')) {
+                const testResults = JSON.parse(fs.readFileSync('test-results.json', 'utf8'));
+                
+                comment += `### Test Summary\n`;
+                comment += `- **Total Tests**: ${testResults.numTotalTests || 'N/A'}\n`;
+                comment += `- **Passed**: ${testResults.numPassedTests || 'N/A'}\n`;
+                comment += `- **Failed**: ${testResults.numFailedTests || 'N/A'}\n`;
+                comment += `- **Test Suites**: ${testResults.numTotalTestSuites || 'N/A'}\n\n`;
+                
+                if (testResults.numFailedTests > 0) {
+                  comment += `### ❌ Failed Tests\n`;
+                  if (testResults.testResults) {
+                    testResults.testResults.forEach(suite => {
+                      if (suite.status === 'failed') {
+                        comment += `**${suite.name}**\n`;
+                        suite.assertionResults.forEach(test => {
+                          if (test.status === 'failed') {
+                            comment += `- ❌ ${test.title}\n`;
+                            if (test.failureMessages && test.failureMessages.length > 0) {
+                              comment += `  \`\`\`\n  ${test.failureMessages[0]}\n  \`\`\`\n`;
+                            }
+                          }
+                        });
+                        comment += `\n`;
+                      }
+                    });
+                  }
+                }
+              }
+              
+              // Check for coverage
+              if (fs.existsSync('coverage/coverage-summary.json')) {
+                const coverage = JSON.parse(fs.readFileSync('coverage/coverage-summary.json', 'utf8'));
+                const total = coverage.total;
+                
+                comment += `### 📊 Coverage Summary\n`;
+                comment += `| Metric | Percentage | Covered/Total |\n`;
+                comment += `|--------|------------|---------------|\n`;
+                comment += `| Lines | ${total.lines.pct}% | ${total.lines.covered}/${total.lines.total} |\n`;
+                comment += `| Functions | ${total.functions.pct}% | ${total.functions.covered}/${total.functions.total} |\n`;
+                comment += `| Branches | ${total.branches.pct}% | ${total.branches.covered}/${total.branches.total} |\n`;
+                comment += `| Statements | ${total.statements.pct}% | ${total.statements.covered}/${total.statements.total} |\n\n`;
+              }
+              
+            } catch (error) {
+              comment += `⚠️ Error reading test results: ${error.message}\n\n`;
+            }
+            
+            comment += `📋 Full test artifacts are available in the workflow run.`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+  build-test:
+    name: Build Test
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Build application
+        run: |
+          npm run build
+          
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: dist/
+          
+      - name: Validate build output
+        run: |
+          echo "## Build Validation" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Build completed successfully" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Build Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          ls -la dist/ >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          
+          # Check if essential files exist
+          if [ -f "dist/index.html" ]; then
+            echo "✅ index.html found" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ index.html missing" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+          
+          if [ -d "dist/assets" ]; then
+            echo "✅ Assets directory found" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Assets directory missing" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+          
+      - name: Run security audit
+        run: |
+          npm audit --audit-level=moderate || true
+          
+      - name: Generate security summary
+        run: |
+          echo "## Security Audit Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          npm audit --audit-level=low --json | jq '.vulnerabilities | length' >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

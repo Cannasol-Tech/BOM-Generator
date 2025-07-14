@@ -1,0 +1,189 @@
+name: Detailed Error Analysis
+
+on:
+  workflow_run:
+    workflows: ["Test Suite"]
+    types: [completed]
+    
+jobs:
+  analyze-failures:
+    name: Analyze Test Failures
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    
+    steps:
+      - name: Download artifacts
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: ${{ github.event.workflow_run.id }},
+            });
+            
+            console.log('Available artifacts:', artifacts.data.artifacts.map(a => a.name));
+            
+            for (const artifact of artifacts.data.artifacts) {
+              if (artifact.name.includes('test-results')) {
+                const download = await github.rest.actions.downloadArtifact({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  artifact_id: artifact.id,
+                  archive_format: 'zip',
+                });
+                
+                const fs = require('fs');
+                fs.writeFileSync(`${artifact.name}.zip`, Buffer.from(download.data));
+                console.log(`Downloaded ${artifact.name}`);
+              }
+            }
+            
+      - name: Extract and analyze test results
+        run: |
+          # Extract all test result archives
+          for zip_file in *.zip; do
+            if [ -f "$zip_file" ]; then
+              unzip -o "$zip_file" -d extracted/
+            fi
+          done
+          
+          # Create detailed failure report
+          echo "# 🚨 Test Failure Analysis Report" > failure-report.md
+          echo "" >> failure-report.md
+          echo "**Workflow Run**: [${{ github.event.workflow_run.html_url }}](${{ github.event.workflow_run.html_url }})" >> failure-report.md
+          echo "**Commit**: ${{ github.event.workflow_run.head_sha }}" >> failure-report.md
+          echo "**Branch**: ${{ github.event.workflow_run.head_branch }}" >> failure-report.md
+          echo "" >> failure-report.md
+          
+          # Analyze each test result file
+          find extracted/ -name "test-results.json" | while read -r result_file; do
+            echo "## Analysis for $(dirname "$result_file")" >> failure-report.md
+            echo "" >> failure-report.md
+            
+            if command -v jq &> /dev/null; then
+              # Extract failure information using jq
+              failed_tests=$(jq -r '.testResults[] | select(.status == "failed") | .name' "$result_file" 2>/dev/null || echo "No specific failures found")
+              
+              if [ "$failed_tests" != "No specific failures found" ]; then
+                echo "### Failed Test Files:" >> failure-report.md
+                echo "$failed_tests" | while read -r failed_file; do
+                  echo "- \`$failed_file\`" >> failure-report.md
+                done
+                echo "" >> failure-report.md
+                
+                # Extract detailed error messages
+                echo "### Error Details:" >> failure-report.md
+                jq -r '.testResults[] | select(.status == "failed") | .assertionResults[] | select(.status == "failed") | "**Test**: \(.title)\n**Error**: \(.failureMessages[0] // "No error message")\n"' "$result_file" 2>/dev/null >> failure-report.md || echo "Could not extract detailed errors" >> failure-report.md
+              else
+                echo "No detailed failure information available in this result file." >> failure-report.md
+              fi
+            else
+              echo "jq not available, showing raw JSON:" >> failure-report.md
+              echo "\`\`\`json" >> failure-report.md
+              cat "$result_file" >> failure-report.md
+              echo "\`\`\`" >> failure-report.md
+            fi
+            echo "" >> failure-report.md
+          done
+          
+          # Show the report
+          cat failure-report.md
+          
+      - name: Create failure issue
+        if: github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            let issueBody = `# 🚨 Test Suite Failure on Main Branch\n\n`;
+            issueBody += `The test suite failed on the main branch. This requires immediate attention.\n\n`;
+            issueBody += `**Commit**: ${{ github.event.workflow_run.head_sha }}\n`;
+            issueBody += `**Workflow Run**: [${{ github.event.workflow_run.html_url }}](${{ github.event.workflow_run.html_url }})\n\n`;
+            
+            if (fs.existsSync('failure-report.md')) {
+              const report = fs.readFileSync('failure-report.md', 'utf8');
+              issueBody += report;
+            } else {
+              issueBody += `No detailed failure report available. Please check the workflow run for more information.`;
+            }
+            
+            // Check if similar issue already exists
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'test-failure,main-branch'
+            });
+            
+            if (issues.data.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `🚨 Test Suite Failure on Main Branch - ${new Date().toISOString().split('T')[0]}`,
+                body: issueBody,
+                labels: ['test-failure', 'main-branch', 'bug', 'high-priority']
+              });
+            } else {
+              // Update existing issue
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issues.data[0].number,
+                body: `## New Test Failure\n\n${issueBody}`
+              });
+            }
+
+  performance-analysis:
+    name: Performance Analysis
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Run performance tests
+        run: |
+          # Run tests with timing information
+          npm test -- --reporter=verbose --outputFile=performance-results.json 2>&1 | tee test-performance.log
+          
+      - name: Analyze test performance
+        run: |
+          echo "# 📊 Test Performance Analysis" > performance-report.md
+          echo "" >> performance-report.md
+          
+          # Extract timing information from logs
+          if [ -f "test-performance.log" ]; then
+            echo "## Test Execution Times" >> performance-report.md
+            echo "" >> performance-report.md
+            
+            # Look for test timing patterns
+            grep -E "(ms|✓|×)" test-performance.log | head -20 >> performance-report.md || echo "No timing information found" >> performance-report.md
+          fi
+          
+          echo "" >> performance-report.md
+          echo "## Recommendations" >> performance-report.md
+          echo "" >> performance-report.md
+          echo "- Review slow-running tests (>1000ms)" >> performance-report.md
+          echo "- Consider breaking down large test suites" >> performance-report.md
+          echo "- Optimize test setup and teardown processes" >> performance-report.md
+          
+      - name: Upload performance report
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-analysis
+          path: |
+            performance-report.md
+            test-performance.log
+            performance-results.json

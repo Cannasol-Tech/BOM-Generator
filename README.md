@@ -19,7 +19,48 @@ A modern, browser-based Bill of Materials (BOM) management system built for Cann
 - **Charts**: Recharts
 - **Icons**: Lucide React
 - **Build Tool**: Vite
+- **Testing**: Vitest + Testing Library
+- **CI/CD**: GitHub Actions
 - **Deployment**: Netlify (recommended)
+
+## 🧪 Testing & CI/CD
+
+[![Test Suite](https://github.com/Cannasol-Tech/BOM-Generator/actions/workflows/test.yml/badge.svg)](https://github.com/Cannasol-Tech/BOM-Generator/actions/workflows/test.yml)
+
+This project includes a comprehensive GitHub Actions pipeline that automatically:
+
+- **🔍 Tests**: Runs on Node.js 18.x and 20.x
+- **📊 Coverage**: Generates detailed code coverage reports
+- **🔧 Linting**: ESLint code quality checks
+- **📝 Type Checking**: TypeScript validation
+- **🏗️ Build Validation**: Ensures deployable builds
+- **🔒 Security**: npm audit for vulnerabilities
+- **📱 PR Integration**: Automatic test results in pull requests
+- **🚨 Error Analysis**: Detailed failure reports and auto-issue creation
+
+### Running Tests Locally
+
+```bash
+# Run all tests
+npm test
+
+# Run tests with coverage
+npm run test:coverage
+
+# Run tests in watch mode
+npm run test:watch
+
+# Run tests with UI
+npm run test:ui
+
+# Lint code
+npm run lint
+
+# Type check
+npx tsc --noEmit
+```
+
+For more details, see [GitHub Actions Documentation](./docs/github-actions.md).
 
 ## 🚀 Quick Deploy to Netlify (Free)
 

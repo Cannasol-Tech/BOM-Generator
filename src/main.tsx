@@ -1695,30 +1695,30 @@ const NLPAddDialog = ({
           )}
         </div>
       </Card>
-      
-      {/* Dialogs */}
-      <BOMManagementDialog
-        isOpen={showBOMManagement}
-        onClose={() => setShowBOMManagement(false)}
-        onLoadBOM={handleLoadBOM}
-        onSaveBOM={handleSaveBOM}
-        currentBOMId={currentBOMId}
-        currentBOMData={bomData}
-      />
-      
-      <NLPAddDialog
-        isOpen={showNLPAdd}
-        onClose={() => setShowNLPAdd(false)}
-        onAdd={handleBulkAdd}
-        existingPartNumbers={bomData.map(item => item.partNumber)}
-        inventory={[...bomData, ...inventory]}
-        bomData={bomData}
-      />
-      
-      <BulkAddDialog 
-        isOpen={showBulkAdd}
-        onClose={() => setShowBulkAdd(false)}
-        onAdd={handleBulkAdd}
+    </div>
+  );
+};
+const BulkAddDialog = ({ 
+  isOpen, 
+  onClose, 
+  onAdd, 
+  existingPartNumbers 
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onAdd: (items: any[]) => void;
+  existingPartNumbers: string[];
+}) => {
+  const [bulkText, setBulkText] = useState('');
+  const [previewData, setPreviewData] = useState<BOMItem[]>([]);
+  const [showPreview, setShowPreview] = useState(false);
+
+  const parseTextInput = () => {
+    const lines = bulkText.split('\n').filter(line => line.trim());
+    const parsed = lines.map((line, index) => {
+      const parts = line.split(/\t|,/).map(p => p.trim());
+      const description = parts[0] || `Bulk Item ${index + 1}`;
+      const category = parts[1] || 'Other';
       const quantity = parseInt(parts[2]) || 1;
       const unitCost = parseFloat(parts[3]) || 0;
       const supplier = parts[4] || '';
