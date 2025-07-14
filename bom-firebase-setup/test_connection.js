@@ -4,11 +4,11 @@
 const admin = require('firebase-admin');
 
 // Initialize Firebase Admin SDK
-const serviceAccount = require('./serviceAccountKey.json');
+const serviceAccount = require('./serviceAccount.json');
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
-  projectId: 'your-project-id' // Replace with your actual project ID
+  projectId: 'cannasol-executive-dashboard' // Replace with your actual project ID
 });
 
 const db = admin.firestore();
