@@ -2362,7 +2362,8 @@ const Header = ({
   onNLPAdd,
   onBOMManagement,
   onEasyEDAExport,
-  currentBOMName 
+  currentBOMName,
+  savingToFirebase 
 }: {
   lastSaved: Date | null;
   onSave: () => void;
@@ -2374,6 +2375,7 @@ const Header = ({
   onBOMManagement: () => void;
   onEasyEDAExport: () => void;
   currentBOMName: string | null;
+  savingToFirebase?: boolean;
 }) => {
   const [showDropdown, setShowDropdown] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
@@ -2438,9 +2440,9 @@ const Header = ({
           {/* Action Buttons */}
           <div className="flex items-center space-x-3">
             {/* Quick Save */}
-            <Button onClick={onSave} variant="outline" size="sm">
+            <Button onClick={onSave} variant="outline" size="sm" disabled={savingToFirebase}>
               <Save size={16} />
-              <span className="hidden sm:inline">Save</span>
+              <span className="hidden sm:inline">{savingToFirebase ? 'Saving...' : 'Save'}</span>
             </Button>
 
             {/* BOM Management */}
@@ -2951,8 +2953,9 @@ const BOMManager = () => {
   
   // Firebase/n8n states
   const [firebaseConnected, setFirebaseConnected] = useState(false);
-  const [bomTemplates, setBomTemplates] = useState<any[]>([]);
-  const [loadingFromFirebase, setLoadingFromFirebase] = useState(false);
+  const [n8nConnected, setN8nConnected] = useState(false);
+  const [isLoadingFirebaseData, setIsLoadingFirebaseData] = useState(false);
+  const [firebaseInventory, setFirebaseInventory] = useState<any[]>([]);
   const [savingToFirebase, setSavingToFirebase] = useState(false);
   
   // BOM Management states
@@ -2968,7 +2971,12 @@ const BOMManager = () => {
   // Initialize services
   const easyEDAService = useRef(new EasyEDAService()).current;
   const firebaseService = useRef(new HybridFirebaseBOMService()).current;
-  const n8nService = useRef(new N8NWebhookService()).current;
+  const n8nService = useRef(new N8NWebhookService({
+    webhookUrl: import.meta.env.VITE_N8N_WEBHOOK_URL || 'https://your-n8n-instance.com/webhook/bom-save',
+    secret: import.meta.env.VITE_N8N_WEBHOOK_SECRET,
+    timeout: 30000,
+    retryAttempts: 3
+  })).current;
 
   // EasyEDA Integration functions
   const handleEasyEDASearch = async (bomItem: BOMItem) => {
@@ -3048,6 +3056,49 @@ const BOMManager = () => {
     setInventory(loadedInventory);
   }, []);
 
+  // Initialize Firebase and N8N services
+  useEffect(() => {
+    const initializeServices = async () => {
+      try {
+        setIsLoadingFirebaseData(true);
+        
+        // Initialize Firebase service
+        console.log('🔥 Initializing Firebase service...');
+        await firebaseService.initialize();
+        setFirebaseConnected(true);
+        console.log('✅ Firebase service initialized');
+        
+        // Load inventory from Firebase
+        console.log('📦 Loading inventory from Firebase...');
+        const inventoryItems = await firebaseService.getInventoryItems();
+        setFirebaseInventory(inventoryItems);
+        console.log(`✅ Loaded ${inventoryItems.length} inventory items from Firebase`);
+        
+      } catch (error) {
+        console.error('❌ Failed to initialize Firebase:', error);
+        setFirebaseConnected(false);
+        // Fallback to localStorage
+        console.log('📂 Falling back to localStorage data');
+      } finally {
+        setIsLoadingFirebaseData(false);
+      }
+
+      try {
+        // Initialize N8N service
+        console.log('🔗 Initializing N8N webhook service...');
+        await n8nService.initialize();
+        setN8nConnected(true);
+        console.log('✅ N8N webhook service initialized');
+      } catch (error) {
+        console.error('❌ Failed to initialize N8N service:', error);
+        setN8nConnected(false);
+        // N8N is optional, continue without it
+      }
+    };
+
+    initializeServices();
+  }, [firebaseService, n8nService]);
+
   // Auto-save every 30 seconds
   useEffect(() => {
     if (bomData.length > 0 && currentBOMId) {
@@ -3059,25 +3110,79 @@ const BOMManager = () => {
     }
   }, [bomData, currentBOMId]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     console.log('🔄 Saving BOM...', { currentBOMId, bomDataLength: bomData.length });
     
-    if (currentBOMId) {
-      // Update existing named BOM
-      const success = BOMStorage.updateNamedBOM(currentBOMId, bomData);
-      console.log('📝 Named BOM update result:', success);
-      if (success) {
-        setLastSaved(new Date());
-        console.log('✅ Named BOM saved successfully');
+    try {
+      setSavingToFirebase(true);
+      
+      if (currentBOMId) {
+        // Update existing named BOM locally
+        const success = BOMStorage.updateNamedBOM(currentBOMId, bomData);
+        console.log('📝 Named BOM update result:', success);
+        
+        if (success) {
+          setLastSaved(new Date());
+          console.log('✅ Named BOM saved locally');
+          
+          // Send update to N8N webhook if connected
+          if (n8nConnected && n8nService.isInitialized()) {
+            try {
+              console.log('🚀 Sending BOM update to N8N...');
+              const namedBOM = BOMStorage.getNamedBOM(currentBOMId);
+              if (namedBOM) {
+                const response = await n8nService.sendBOMUpdate(currentBOMId, {
+                  ...namedBOM,
+                  bomData
+                });
+                
+                if (response.success) {
+                  console.log('✅ BOM update sent to N8N successfully');
+                } else {
+                  console.warn('⚠️ N8N BOM update failed:', response.error);
+                }
+              }
+            } catch (error) {
+              console.error('❌ Failed to send BOM update to N8N:', error);
+            }
+          }
+        }
+      } else {
+        // Legacy save to localStorage
+        const success = BOMStorage.save(bomData);
+        console.log('💾 Legacy save result:', success);
+        
+        if (success) {
+          setLastSaved(new Date());
+          console.log('✅ Legacy BOM saved locally');
+          
+          // Send new BOM to N8N webhook if connected
+          if (n8nConnected && n8nService.isInitialized()) {
+            try {
+              console.log('🚀 Sending new BOM to N8N...');
+              const response = await n8nService.sendBOMSave({
+                name: `BOM_${new Date().toISOString().split('T')[0]}`,
+                description: 'BOM generated from Cannasol BOM Generator',
+                bomData,
+                createdAt: new Date().toISOString(),
+                source: 'bom-generator'
+              });
+              
+              if (response.success) {
+                console.log('✅ BOM sent to N8N successfully, ID:', response.bomId);
+              } else {
+                console.warn('⚠️ N8N BOM save failed:', response.error);
+              }
+            } catch (error) {
+              console.error('❌ Failed to send BOM to N8N:', error);
+            }
+          }
+        }
       }
-    } else {
-      // Legacy save to localStorage
-      const success = BOMStorage.save(bomData);
-      console.log('💾 Legacy save result:', success);
-      if (success) {
-        setLastSaved(new Date());
-        console.log('✅ Legacy BOM saved successfully');
-      }
+    } catch (error) {
+      console.error('❌ Error during save operation:', error);
+    } finally {
+      setSavingToFirebase(false);
     }
   };
 
@@ -3107,19 +3212,46 @@ const BOMManager = () => {
     }
   };
 
-  const handleSaveBOM = (name: string, description: string) => {
+  const handleSaveBOM = async (name: string, description: string) => {
     console.log('💾 Saving new named BOM:', name, 'with', bomData.length, 'items');
     
     try {
+      setSavingToFirebase(true);
+      
       const bomId = BOMStorage.saveNamedBOM(name, description, bomData);
-      console.log('✅ Named BOM saved with ID:', bomId);
+      console.log('✅ Named BOM saved locally with ID:', bomId);
       
       setCurrentBOMId(bomId);
       setCurrentBOMName(name);
       BOMStorage.setCurrentBOM(bomId);
       setLastSaved(new Date());
+      
+      // Send to N8N webhook if connected
+      if (n8nConnected && n8nService.isInitialized()) {
+        try {
+          console.log('🚀 Sending new named BOM to N8N...');
+          const response = await n8nService.sendBOMSave({
+            bomId,
+            name,
+            description,
+            bomData,
+            createdAt: new Date().toISOString(),
+            source: 'bom-generator'
+          });
+          
+          if (response.success) {
+            console.log('✅ Named BOM sent to N8N successfully');
+          } else {
+            console.warn('⚠️ N8N named BOM save failed:', response.error);
+          }
+        } catch (error) {
+          console.error('❌ Failed to send named BOM to N8N:', error);
+        }
+      }
     } catch (error) {
       console.error('❌ Failed to save named BOM:', error);
+    } finally {
+      setSavingToFirebase(false);
     }
   };
 
@@ -3190,6 +3322,49 @@ const BOMManager = () => {
       BOMStorage.save(updatedData);
     }
     setLastSaved(new Date());
+  };
+
+  // Helper function to check inventory availability
+  const checkInventoryAvailability = (partNumber: string): {
+    available: boolean;
+    currentStock: number;
+    unitCost: number;
+    inventoryItem?: any;
+  } => {
+    if (!firebaseConnected || firebaseInventory.length === 0) {
+      return { available: false, currentStock: 0, unitCost: 0 };
+    }
+
+    const inventoryItem = firebaseInventory.find(item => 
+      item.partNumber === partNumber || 
+      item.componentName.toLowerCase().includes(partNumber.toLowerCase())
+    );
+
+    if (inventoryItem) {
+      return {
+        available: inventoryItem.currentStock > 0,
+        currentStock: inventoryItem.currentStock,
+        unitCost: inventoryItem.unitCost || 0,
+        inventoryItem
+      };
+    }
+
+    return { available: false, currentStock: 0, unitCost: 0 };
+  };
+
+  // Helper function to suggest parts from inventory
+  const suggestPartsFromInventory = (searchTerm: string): any[] => {
+    if (!firebaseConnected || firebaseInventory.length === 0 || !searchTerm) {
+      return [];
+    }
+
+    const term = searchTerm.toLowerCase();
+    return firebaseInventory
+      .filter(item => 
+        item.partNumber.toLowerCase().includes(term) ||
+        item.componentName.toLowerCase().includes(term)
+      )
+      .slice(0, 5); // Limit to 5 suggestions
   };
 
   const handleAddItem = () => {
@@ -3285,6 +3460,14 @@ const BOMManager = () => {
   const handleCellClick = (itemId: number, field: string, currentValue: any) => {
     setEditingCell({ itemId, field });
     setEditValue(currentValue || '');
+    
+    // For part number fields, pre-populate with inventory suggestions
+    if (field === 'partNumber' && firebaseConnected && currentValue) {
+      const availability = checkInventoryAvailability(currentValue);
+      if (availability.inventoryItem) {
+        console.log('📦 Found inventory item for:', currentValue, availability);
+      }
+    }
   };
 
   const handleCellSave = () => {
@@ -3302,6 +3485,30 @@ const BOMManager = () => {
         }
         
         const updatedItem = { ...item, [field]: newValue };
+        
+        // Auto-populate from inventory when part number is changed
+        if (field === 'partNumber' && firebaseConnected) {
+          const availability = checkInventoryAvailability(newValue);
+          if (availability.inventoryItem) {
+            const inventoryItem = availability.inventoryItem;
+            console.log('📦 Auto-populating from inventory:', inventoryItem.partNumber);
+            
+            // Update fields with inventory data
+            updatedItem.description = inventoryItem.componentName;
+            updatedItem.unitCost = inventoryItem.unitCost || 0;
+            updatedItem.supplier = inventoryItem.supplier || '';
+            updatedItem.digikeyPN = inventoryItem.digikeyPN || '';
+            updatedItem.category = inventoryItem.category || updatedItem.category;
+            updatedItem.fromInventory = true;
+            
+            // Add a note about stock availability
+            if (availability.currentStock > 0) {
+              updatedItem.status = `In Stock (${availability.currentStock})`;
+            } else {
+              updatedItem.status = 'Out of Stock';
+            }
+          }
+        }
         
         if (field === 'quantity' || field === 'unitCost') {
           updatedItem.extendedCost = updatedItem.quantity * updatedItem.unitCost;
@@ -3338,6 +3545,53 @@ const BOMManager = () => {
     const isEditing = editingCell?.itemId === item.id && editingCell?.field === field;
     
     if (isEditing) {
+      // For part number field, show inventory suggestions
+      if (field === 'partNumber') {
+        const inventorySuggestions = suggestPartsFromInventory(editValue);
+        return (
+          <div className="relative">
+            <input
+              type="text"
+              list="inventory-parts"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onBlur={handleCellSave}
+              onKeyDown={handleKeyPress}
+              className={`w-full px-2 py-1 border border-blue-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${className}`}
+              placeholder="Start typing to see inventory suggestions..."
+              autoFocus
+            />
+            <datalist id="inventory-parts">
+              {inventorySuggestions.map(inv => (
+                <option key={inv.partNumber} value={inv.partNumber}>
+                  {inv.componentName} (Stock: {inv.currentStock})
+                </option>
+              ))}
+            </datalist>
+            {inventorySuggestions.length > 0 && (
+              <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-md shadow-lg z-10 max-h-40 overflow-y-auto">
+                {inventorySuggestions.map(inv => (
+                  <div
+                    key={inv.partNumber}
+                    className="px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm border-b border-gray-100 last:border-b-0"
+                    onClick={() => {
+                      setEditValue(inv.partNumber);
+                      setTimeout(() => handleCellSave(), 100);
+                    }}
+                  >
+                    <div className="font-medium">{inv.partNumber}</div>
+                    <div className="text-gray-600">{inv.componentName}</div>
+                    <div className="text-xs text-gray-500">
+                      Stock: {inv.currentStock} | Cost: ${inv.unitCost?.toFixed(2) || '0.00'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      }
+      
       // For category field, show a datalist with existing categories
       if (field === 'category') {
         const existingCategories = [...new Set(bomData.map(item => item.category).filter(Boolean))];
@@ -3439,6 +3693,7 @@ const BOMManager = () => {
         onBOMManagement={() => setShowBOMManagement(true)}
         onEasyEDAExport={handleEasyEDAExport}
         currentBOMName={currentBOMName}
+        savingToFirebase={savingToFirebase}
       />
       
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -3461,7 +3716,7 @@ const BOMManager = () => {
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-6">
           <Card className="p-6 bg-gray-50">
             <div className="flex items-center space-x-3">
               <Package className="text-gray-600" size={24} />
@@ -3510,6 +3765,22 @@ const BOMManager = () => {
                 <p className="text-sm text-green-600">Selected</p>
                 {selectedItems.size > 0 && (
                   <p className="text-xs text-green-600">${selectedCost.toFixed(2)}</p>
+                )}
+              </div>
+            </div>
+          </Card>
+          <Card className={`p-6 ${firebaseConnected ? 'bg-green-50' : 'bg-red-50'}`}>
+            <div className="flex items-center space-x-3">
+              <Database className={firebaseConnected ? "text-green-600" : "text-red-600"} size={24} />
+              <div>
+                <p className={`text-sm font-semibold ${firebaseConnected ? 'text-green-900' : 'text-red-900'}`}>
+                  {isLoadingFirebaseData ? 'Loading...' : firebaseConnected ? 'Connected' : 'Offline'}
+                </p>
+                <p className={`text-xs ${firebaseConnected ? 'text-green-600' : 'text-red-600'}`}>
+                  Firebase
+                </p>
+                {firebaseInventory.length > 0 && (
+                  <p className="text-xs text-gray-600">{firebaseInventory.length} items</p>
                 )}
               </div>
             </div>

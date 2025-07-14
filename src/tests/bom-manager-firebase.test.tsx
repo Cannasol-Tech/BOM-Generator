@@ -18,7 +18,7 @@ const MockBOMManager = () => {
 };
 
 // Temporarily disabled - Firebase integration in development  
-describe.skip('BOM Manager Firebase Integration', () => {
+describe('BOM Manager Firebase Integration', () => {
   const user = userEvent.setup();
 
   beforeEach(() => {
