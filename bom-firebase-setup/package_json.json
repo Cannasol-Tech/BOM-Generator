@@ -1,0 +1,30 @@
+{
+  "name": "bom-automation-firebase-setup",
+  "version": "1.0.0",
+  "description": "Firebase setup for BOM automation system",
+  "main": "firebase-init.js",
+  "scripts": {
+    "init": "node firebase-init.js",
+    "setup": "npm install && node firebase-init.js",
+    "test-connection": "node test-connection.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.0.0"
+  },
+  "devDependencies": {
+    "dotenv": "^16.0.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "author": "Your Company",
+  "license": "MIT",
+  "keywords": [
+    "firebase",
+    "firestore", 
+    "bom",
+    "inventory",
+    "automation",
+    "n8n"
+  ]
+}
