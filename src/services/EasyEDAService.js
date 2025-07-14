@@ -4,6 +4,7 @@
 class EasyEDAService {
   constructor() {
     this.baseUrl = 'https://easyeda.com';
+    this.oshwlabUrl = 'https://oshwlab.com';
     this.apiUrl = 'https://modules.easyeda.com/api';
     this.componentCache = new Map();
   }
@@ -79,10 +80,10 @@ class EasyEDAService {
     );
     
     return {
-      // Direct search in EasyEDA
-      search: `${this.baseUrl}/editor#search=${searchQuery}`,
+      // Direct search in OSHWLab (correct EasyEDA search URL)
+      search: `${this.oshwlabUrl}/search?wd=${searchQuery}`,
       // Component library search
-      library: `${this.baseUrl}/libs#searchkey=${searchQuery}`,
+      library: `${this.oshwlabUrl}/search?wd=${searchQuery}`,
       // LCSC component search (EasyEDA's preferred supplier)
       lcsc: `https://lcsc.com/search?q=${searchQuery}`,
       // Schematic symbol search
@@ -240,7 +241,7 @@ class EasyEDAService {
           const currentComponent = components[0]; // Start with first component
           if (currentComponent) {
             const searchQuery = currentComponent.partNumber || currentComponent.description;
-            const searchUrl = 'https://easyeda.com/libs#searchkey=' + encodeURIComponent(searchQuery);
+            const searchUrl = 'https://oshwlab.com/search?wd=' + encodeURIComponent(searchQuery);
             window.open(searchUrl, '_blank');
           }
         } else {

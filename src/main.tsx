@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
 // @ts-ignore - EasyEDAService is a JavaScript file without type declarations
 import EasyEDAService from './services/EasyEDAService.js';
+import HybridFirebaseBOMService from './services/HybridFirebaseBOMService';
+import N8NWebhookService from './services/N8NWebhookService';
 import { 
   Plus, 
   Download, 
@@ -1693,30 +1695,30 @@ const NLPAddDialog = ({
           )}
         </div>
       </Card>
-    </div>
-  );
-};
-const BulkAddDialog = ({ 
-  isOpen, 
-  onClose, 
-  onAdd, 
-  existingPartNumbers 
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  onAdd: (items: any[]) => void;
-  existingPartNumbers: string[];
-}) => {
-  const [bulkText, setBulkText] = useState('');
-  const [previewData, setPreviewData] = useState<BOMItem[]>([]);
-  const [showPreview, setShowPreview] = useState(false);
-
-  const parseTextInput = () => {
-    const lines = bulkText.split('\n').filter(line => line.trim());
-    const parsed = lines.map((line, index) => {
-      const parts = line.split(/\t|,/).map(p => p.trim());
-      const description = parts[0] || `Bulk Item ${index + 1}`;
-      const category = parts[1] || 'Other';
+      
+      {/* Dialogs */}
+      <BOMManagementDialog
+        isOpen={showBOMManagement}
+        onClose={() => setShowBOMManagement(false)}
+        onLoadBOM={handleLoadBOM}
+        onSaveBOM={handleSaveBOM}
+        currentBOMId={currentBOMId}
+        currentBOMData={bomData}
+      />
+      
+      <NLPAddDialog
+        isOpen={showNLPAdd}
+        onClose={() => setShowNLPAdd(false)}
+        onAdd={handleBulkAdd}
+        existingPartNumbers={bomData.map(item => item.partNumber)}
+        inventory={[...bomData, ...inventory]}
+        bomData={bomData}
+      />
+      
+      <BulkAddDialog 
+        isOpen={showBulkAdd}
+        onClose={() => setShowBulkAdd(false)}
+        onAdd={handleBulkAdd}
       const quantity = parseInt(parts[2]) || 1;
       const unitCost = parseFloat(parts[3]) || 0;
       const supplier = parts[4] || '';
@@ -2947,6 +2949,11 @@ const BOMManager = () => {
   const [editValue, setEditValue] = useState('');
   const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
   
+  // Firebase/n8n states
+  const [firebaseConnected, setFirebaseConnected] = useState(false);
+  const [bomTemplates, setBomTemplates] = useState<any[]>([]);
+  const [loadingFromFirebase, setLoadingFromFirebase] = useState(false);
+  const [savingToFirebase, setSavingToFirebase] = useState(false);
   
   // BOM Management states
   const [currentBOMId, setCurrentBOMId] = useState<string | null>(null);
@@ -2958,8 +2965,10 @@ const BOMManager = () => {
   const [showNLPAdd, setShowNLPAdd] = useState(false);
   const [showBOMManagement, setShowBOMManagement] = useState(false);
 
-  // Initialize EasyEDA service
+  // Initialize services
   const easyEDAService = useRef(new EasyEDAService()).current;
+  const firebaseService = useRef(new HybridFirebaseBOMService()).current;
+  const n8nService = useRef(new N8NWebhookService()).current;
 
   // EasyEDA Integration functions
   const handleEasyEDASearch = async (bomItem: BOMItem) => {

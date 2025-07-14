@@ -16,11 +16,11 @@ export interface EasyEDAComponent {
 }
 
 export interface EasyEDAUrls {
-  search: string;
-  library: string;
-  lcsc: string;
-  symbol: string;
-  footprint: string;
+  search: string;        // OSHWLab search URL
+  library: string;       // OSHWLab library search URL
+  lcsc: string;          // LCSC supplier search URL
+  symbol: string;        // EasyEDA symbol search URL
+  footprint: string;     // EasyEDA footprint search URL
 }
 
 export interface EasyEDAExportData {
