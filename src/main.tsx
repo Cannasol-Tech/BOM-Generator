@@ -7,6 +7,8 @@ import ImportService from './services/ImportService';
 import PartNumberService from './services/partNumberService';
 import NLPService from './services/NLPService';
 import DigikeyService from './services/DigikeyService';
+// Import Firebase test functions for console testing
+import './firebase-test.js';
 import { 
   Plus, 
   Download, 
@@ -386,6 +388,7 @@ const Badge = ({
     </span>
   );
 };
+
 
 // BOM Management Dialog Component
 const BOMManagementDialog = ({ 
@@ -2732,7 +2735,6 @@ const BOMManager = () => {
   useEffect(() => {
     const initializeServices = async () => {
       try {
-        setIsLoadingFirebaseData(true);
         
         // Initialize Firebase service
         console.log('🔥 Initializing Firebase service...');
@@ -2752,7 +2754,6 @@ const BOMManager = () => {
         // Fallback to localStorage
         console.log('📂 Falling back to localStorage data');
       } finally {
-        setIsLoadingFirebaseData(false);
       }
 
       try {
@@ -2783,78 +2784,146 @@ const BOMManager = () => {
   }, [bomData, currentBOMId]);
 
   const handleSave = async () => {
-    console.log('🔄 Saving BOM...', { currentBOMId, bomDataLength: bomData.length });
+    console.log('🔄 SAVE DEBUG: Starting BOM save operation');
+    console.log('📊 SAVE DEBUG: BOM Data Overview:', {
+      currentBOMId,
+      currentBOMName,
+      bomDataLength: bomData.length,
+      totalCost: bomData.reduce((sum, item) => sum + item.extendedCost, 0),
+      firebaseConnected,
+      n8nConnected,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Debug: Log first few items for verification
+    if (bomData.length > 0) {
+      console.log('📋 SAVE DEBUG: First 3 BOM items:', bomData.slice(0, 3).map(item => ({
+        id: item.id,
+        partNumber: item.partNumber,
+        description: item.description,
+        quantity: item.quantity,
+        unitCost: item.unitCost,
+        extendedCost: item.extendedCost,
+        category: item.category,
+        supplier: item.supplier
+      })));
+    }
     
     try {
       setSavingToFirebase(true);
       
       if (currentBOMId) {
+        console.log('🗂️ SAVE DEBUG: Updating existing named BOM with ID:', currentBOMId);
+        
         // Update existing named BOM locally
         const success = BOMStorage.updateNamedBOM(currentBOMId, bomData);
-        console.log('📝 Named BOM update result:', success);
+        console.log('📝 SAVE DEBUG: Named BOM update result:', success);
+        
+        // Verify the save by reading it back
+        const savedBOM = BOMStorage.getNamedBOM(currentBOMId);
+        console.log('🔍 SAVE DEBUG: Verification - BOM read back:', {
+          found: !!savedBOM,
+          name: savedBOM?.name,
+          itemCount: savedBOM?.bomData.length,
+          totalCost: savedBOM?.totalCost,
+          lastModified: savedBOM?.lastModified
+        });
         
         if (success) {
           setLastSaved(new Date());
-          console.log('✅ Named BOM saved locally');
+          console.log('✅ SAVE DEBUG: Named BOM saved locally successfully');
           
           // Send update to N8N webhook if connected
           if (n8nConnected && n8nService.isInitialized()) {
             try {
-              console.log('🚀 Sending BOM update to N8N...');
+              console.log('🚀 SAVE DEBUG: Sending BOM update to N8N...');
               const namedBOM = BOMStorage.getNamedBOM(currentBOMId);
+              console.log('📤 SAVE DEBUG: Data being sent to N8N:', {
+                bomId: currentBOMId,
+                name: namedBOM?.name,
+                itemCount: bomData.length,
+                totalCost: bomData.reduce((sum, item) => sum + item.extendedCost, 0)
+              });
+              
               if (namedBOM) {
                 const response = await n8nService.sendBOMUpdate(currentBOMId, {
                   ...namedBOM,
                   bomData
                 });
                 
+                console.log('📥 SAVE DEBUG: N8N response:', response);
+                
                 if (response.success) {
-                  console.log('✅ BOM update sent to N8N successfully');
+                  console.log('✅ SAVE DEBUG: BOM update sent to N8N successfully');
                 } else {
-                  console.warn('⚠️ N8N BOM update failed:', response.error);
+                  console.warn('⚠️ SAVE DEBUG: N8N BOM update failed:', response.error);
                 }
               }
             } catch (error) {
-              console.error('❌ Failed to send BOM update to N8N:', error);
+              console.error('❌ SAVE DEBUG: Failed to send BOM update to N8N:', error);
             }
           }
+        } else {
+          console.error('❌ SAVE DEBUG: Failed to save named BOM locally');
         }
       } else {
+        console.log('💾 SAVE DEBUG: No current BOM ID, using legacy save to localStorage');
+        
         // Legacy save to localStorage
         const success = BOMStorage.save(bomData);
-        console.log('💾 Legacy save result:', success);
+        console.log('💾 SAVE DEBUG: Legacy save result:', success);
         
+        // Verify the legacy save
         if (success) {
           setLastSaved(new Date());
-          console.log('✅ Legacy BOM saved locally');
+          console.log('✅ SAVE DEBUG: Legacy BOM saved locally successfully');
           
           // Send new BOM to N8N webhook if connected
           if (n8nConnected && n8nService.isInitialized()) {
             try {
-              console.log('🚀 Sending new BOM to N8N...');
-              const response = await n8nService.sendBOMSave({
+              console.log('🚀 SAVE DEBUG: Sending new BOM to N8N...');
+              const bomPayload = {
                 name: `BOM_${new Date().toISOString().split('T')[0]}`,
                 description: 'BOM generated from Cannasol BOM Generator',
                 bomData,
                 createdAt: new Date().toISOString(),
                 source: 'bom-generator'
+              };
+              
+              console.log('📤 SAVE DEBUG: Legacy BOM payload for N8N:', {
+                name: bomPayload.name,
+                itemCount: bomPayload.bomData.length,
+                totalCost: bomPayload.bomData.reduce((sum, item) => sum + item.extendedCost, 0)
               });
               
+              const response = await n8nService.sendBOMSave(bomPayload);
+              
+              console.log('📥 SAVE DEBUG: N8N legacy response:', response);
+              
               if (response.success) {
-                console.log('✅ BOM sent to N8N successfully, ID:', response.bomId);
+                console.log('✅ SAVE DEBUG: BOM sent to N8N successfully, ID:', response.bomId);
               } else {
-                console.warn('⚠️ N8N BOM save failed:', response.error);
+                console.warn('⚠️ SAVE DEBUG: N8N BOM save failed:', response.error);
               }
             } catch (error) {
-              console.error('❌ Failed to send BOM to N8N:', error);
+              console.error('❌ SAVE DEBUG: Failed to send BOM to N8N:', error);
             }
           }
+        } else {
+          console.error('❌ SAVE DEBUG: Failed to save legacy BOM');
         }
       }
     } catch (error) {
-      console.error('❌ Error during save operation:', error);
+      console.error('❌ SAVE DEBUG: Error during save operation:', error);
+      console.log('🔍 SAVE DEBUG: Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : 'No stack trace',
+        currentBOMId,
+        bomDataLength: bomData.length
+      });
     } finally {
       setSavingToFirebase(false);
+      console.log('🏁 SAVE DEBUG: Save operation completed');
     }
   };
 
@@ -2885,45 +2954,110 @@ const BOMManager = () => {
   };
 
   const handleSaveBOM = async (name: string, description: string) => {
-    console.log('💾 Saving new named BOM:', name, 'with', bomData.length, 'items');
+    console.log('💾 SAVE_BOM DEBUG: Starting named BOM save operation');
+    console.log('📋 SAVE_BOM DEBUG: Input parameters:', {
+      name,
+      description,
+      bomDataLength: bomData.length,
+      currentBOMId,
+      currentBOMName,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Debug: Log BOM data structure
+    console.log('📊 SAVE_BOM DEBUG: BOM data overview:', {
+      totalItems: bomData.length,
+      totalCost: bomData.reduce((sum, item) => sum + item.extendedCost, 0),
+      categories: [...new Set(bomData.map(item => item.category))],
+      suppliers: [...new Set(bomData.map(item => item.supplier))]
+    });
+    
+    // Debug: Log sample items
+    if (bomData.length > 0) {
+      console.log('📋 SAVE_BOM DEBUG: Sample BOM items:', bomData.slice(0, 3).map(item => ({
+        id: item.id,
+        partNumber: item.partNumber,
+        description: item.description,
+        quantity: item.quantity,
+        unitCost: item.unitCost,
+        extendedCost: item.extendedCost
+      })));
+    }
     
     try {
       setSavingToFirebase(true);
       
+      console.log('🔄 SAVE_BOM DEBUG: Calling BOMStorage.saveNamedBOM...');
       const bomId = BOMStorage.saveNamedBOM(name, description, bomData);
-      console.log('✅ Named BOM saved locally with ID:', bomId);
+      console.log('✅ SAVE_BOM DEBUG: Named BOM saved locally with ID:', bomId);
+      
+      // Verify the save
+      const savedBOM = BOMStorage.getNamedBOM(bomId);
+      console.log('🔍 SAVE_BOM DEBUG: Verification - saved BOM:', {
+        found: !!savedBOM,
+        id: savedBOM?.id,
+        name: savedBOM?.name,
+        description: savedBOM?.description,
+        itemCount: savedBOM?.bomData.length,
+        totalCost: savedBOM?.totalCost,
+        createdDate: savedBOM?.createdDate,
+        lastModified: savedBOM?.lastModified
+      });
       
       setCurrentBOMId(bomId);
       setCurrentBOMName(name);
       BOMStorage.setCurrentBOM(bomId);
       setLastSaved(new Date());
       
+      console.log('📝 SAVE_BOM DEBUG: State updated successfully');
+      
       // Send to N8N webhook if connected
       if (n8nConnected && n8nService.isInitialized()) {
         try {
-          console.log('🚀 Sending new named BOM to N8N...');
-          const response = await n8nService.sendBOMSave({
+          console.log('🚀 SAVE_BOM DEBUG: Sending new named BOM to N8N...');
+          const n8nPayload = {
             bomId,
             name,
             description,
             bomData,
             createdAt: new Date().toISOString(),
             source: 'bom-generator'
+          };
+          
+          console.log('📤 SAVE_BOM DEBUG: N8N payload:', {
+            bomId: n8nPayload.bomId,
+            name: n8nPayload.name,
+            itemCount: n8nPayload.bomData.length,
+            totalCost: n8nPayload.bomData.reduce((sum, item) => sum + item.extendedCost, 0)
           });
           
+          const response = await n8nService.sendBOMSave(n8nPayload);
+          
+          console.log('📥 SAVE_BOM DEBUG: N8N response:', response);
+          
           if (response.success) {
-            console.log('✅ Named BOM sent to N8N successfully');
+            console.log('✅ SAVE_BOM DEBUG: Named BOM sent to N8N successfully');
           } else {
-            console.warn('⚠️ N8N named BOM save failed:', response.error);
+            console.warn('⚠️ SAVE_BOM DEBUG: N8N named BOM save failed:', response.error);
           }
         } catch (error) {
-          console.error('❌ Failed to send named BOM to N8N:', error);
+          console.error('❌ SAVE_BOM DEBUG: Failed to send named BOM to N8N:', error);
         }
+      } else {
+        console.log('🔌 SAVE_BOM DEBUG: N8N not connected, skipping webhook');
       }
     } catch (error) {
-      console.error('❌ Failed to save named BOM:', error);
+      console.error('❌ SAVE_BOM DEBUG: Failed to save named BOM:', error);
+      console.log('🔍 SAVE_BOM DEBUG: Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : 'No stack trace',
+        bomDataLength: bomData.length,
+        name,
+        description
+      });
     } finally {
       setSavingToFirebase(false);
+      console.log('🏁 SAVE_BOM DEBUG: Named BOM save operation completed');
     }
   };
 
