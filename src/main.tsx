@@ -3163,22 +3163,6 @@ const BOMManager = () => {
               </div>
             </div>
           </Card>
-          <Card className={`p-6 ${firebaseConnected ? 'bg-green-50' : 'bg-red-50'}`}>
-            <div className="flex items-center space-x-3">
-              <Database className={firebaseConnected ? "text-green-600" : "text-red-600"} size={24} />
-              <div>
-                <p className={`text-sm font-semibold ${firebaseConnected ? 'text-green-900' : 'text-red-900'}`}>
-                  {isLoadingFirebaseData ? 'Loading...' : firebaseConnected ? 'Connected' : 'Offline'}
-                </p>
-                <p className={`text-xs ${firebaseConnected ? 'text-green-600' : 'text-red-600'}`}>
-                  Firebase
-                </p>
-                {firebaseInventory.length > 0 && (
-                  <p className="text-xs text-gray-600">{firebaseInventory.length} items</p>
-                )}
-              </div>
-            </div>
-          </Card>
         </div>
 
         {/* Search and Filter */}
