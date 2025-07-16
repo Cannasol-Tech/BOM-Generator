@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 // @ts-ignore - EasyEDAService is a JavaScript file without type declarations
 import EasyEDAService from './services/EasyEDAService.js';
 import { HybridFirebaseBOMService } from './services/HybridFirebaseBOMService';
-import { N8NWebhookService } from './services/N8NWebhookService';
 import ImportService from './services/ImportService';
 import PartNumberService from './services/partNumberService';
 import NLPService from './services/NLPService';
@@ -2628,7 +2627,6 @@ const BOMManager = () => {
   
   // Firebase/n8n states
   const [firebaseConnected, setFirebaseConnected] = useState(false);
-  const [n8nConnected, setN8nConnected] = useState(false);
 
   const [firebaseInventory, setFirebaseInventory] = useState<any[]>([]);
   const [savingToFirebase, setSavingToFirebase] = useState(false);
@@ -2646,12 +2644,6 @@ const BOMManager = () => {
   // Initialize services
   const easyEDAService = useRef(new EasyEDAService()).current;
   const firebaseService = useRef(new HybridFirebaseBOMService()).current;
-  const n8nService = useRef(new N8NWebhookService({
-    webhookUrl: import.meta.env.VITE_N8N_WEBHOOK_URL || 'https://your-n8n-instance.com/webhook/bom-save',
-    secret: import.meta.env.VITE_N8N_WEBHOOK_SECRET,
-    timeout: 30000,
-    retryAttempts: 3
-  })).current;
 
   // EasyEDA Integration functions
   const handleEasyEDASearch = async (bomItem: BOMItem) => {
@@ -2753,24 +2745,11 @@ const BOMManager = () => {
         setFirebaseConnected(false);
         // Fallback to localStorage
         console.log('📂 Falling back to localStorage data');
-      } finally {
-      }
-
-      try {
-        // Initialize N8N service
-        console.log('🔗 Initializing N8N webhook service...');
-        await n8nService.initialize();
-        setN8nConnected(true);
-        console.log('✅ N8N webhook service initialized');
-      } catch (error) {
-        console.error('❌ Failed to initialize N8N service:', error);
-        setN8nConnected(false);
-        // N8N is optional, continue without it
       }
     };
 
     initializeServices();
-  }, [firebaseService, n8nService]);
+  }, [firebaseService]);
 
   // Auto-save every 30 seconds
   useEffect(() => {
@@ -2791,7 +2770,6 @@ const BOMManager = () => {
       bomDataLength: bomData.length,
       totalCost: bomData.reduce((sum, item) => sum + item.extendedCost, 0),
       firebaseConnected,
-      n8nConnected,
       timestamp: new Date().toISOString()
     });
     
@@ -2819,6 +2797,17 @@ const BOMManager = () => {
         const success = BOMStorage.updateNamedBOM(currentBOMId, bomData);
         console.log('📝 SAVE DEBUG: Named BOM update result:', success);
         
+        // Save to Firebase if connected
+        if (firebaseConnected && firebaseService.isInitialized()) {
+          try {
+            console.log('🔥 SAVE DEBUG: Updating BOM in Firebase...');
+            await firebaseService.updateNamedBOM(currentBOMId, bomData);
+            console.log('✅ SAVE DEBUG: BOM updated in Firebase successfully');
+          } catch (error) {
+            console.error('❌ SAVE DEBUG: Failed to update BOM in Firebase:', error);
+          }
+        }
+        
         // Verify the save by reading it back
         const savedBOM = BOMStorage.getNamedBOM(currentBOMId);
         console.log('🔍 SAVE DEBUG: Verification - BOM read back:', {
@@ -2832,83 +2821,41 @@ const BOMManager = () => {
         if (success) {
           setLastSaved(new Date());
           console.log('✅ SAVE DEBUG: Named BOM saved locally successfully');
-          
-          // Send update to N8N webhook if connected
-          if (n8nConnected && n8nService.isInitialized()) {
-            try {
-              console.log('🚀 SAVE DEBUG: Sending BOM update to N8N...');
-              const namedBOM = BOMStorage.getNamedBOM(currentBOMId);
-              console.log('📤 SAVE DEBUG: Data being sent to N8N:', {
-                bomId: currentBOMId,
-                name: namedBOM?.name,
-                itemCount: bomData.length,
-                totalCost: bomData.reduce((sum, item) => sum + item.extendedCost, 0)
-              });
-              
-              if (namedBOM) {
-                const response = await n8nService.sendBOMUpdate(currentBOMId, {
-                  ...namedBOM,
-                  bomData
-                });
-                
-                console.log('📥 SAVE DEBUG: N8N response:', response);
-                
-                if (response.success) {
-                  console.log('✅ SAVE DEBUG: BOM update sent to N8N successfully');
-                } else {
-                  console.warn('⚠️ SAVE DEBUG: N8N BOM update failed:', response.error);
-                }
-              }
-            } catch (error) {
-              console.error('❌ SAVE DEBUG: Failed to send BOM update to N8N:', error);
-            }
-          }
         } else {
           console.error('❌ SAVE DEBUG: Failed to save named BOM locally');
         }
       } else {
-        console.log('💾 SAVE DEBUG: No current BOM ID, using legacy save to localStorage');
+        console.log('💾 SAVE DEBUG: No current BOM ID, using legacy save');
         
         // Legacy save to localStorage
         const success = BOMStorage.save(bomData);
         console.log('💾 SAVE DEBUG: Legacy save result:', success);
         
+        // Save to Firebase if connected
+        if (firebaseConnected && firebaseService.isInitialized()) {
+          try {
+            console.log('� SAVE DEBUG: Saving legacy BOM to Firebase...');
+            await firebaseService.saveBOM(bomData);
+            console.log('✅ SAVE DEBUG: Legacy BOM saved to Firebase successfully');
+          } catch (error) {
+            console.error('❌ SAVE DEBUG: Failed to save legacy BOM to Firebase:', error);
+          }
+        }
+        
         // Verify the legacy save
+        const savedData = BOMStorage.load();
+        console.log('🔍 SAVE DEBUG: Legacy verification - Data read back:', {
+          itemCount: savedData.length,
+          totalCost: savedData.reduce((sum: number, item: any) => sum + item.extendedCost, 0),
+          firstItem: savedData[0] ? {
+            partNumber: savedData[0].partNumber,
+            description: savedData[0].description
+          } : null
+        });
+        
         if (success) {
           setLastSaved(new Date());
           console.log('✅ SAVE DEBUG: Legacy BOM saved locally successfully');
-          
-          // Send new BOM to N8N webhook if connected
-          if (n8nConnected && n8nService.isInitialized()) {
-            try {
-              console.log('🚀 SAVE DEBUG: Sending new BOM to N8N...');
-              const bomPayload = {
-                name: `BOM_${new Date().toISOString().split('T')[0]}`,
-                description: 'BOM generated from Cannasol BOM Generator',
-                bomData,
-                createdAt: new Date().toISOString(),
-                source: 'bom-generator'
-              };
-              
-              console.log('📤 SAVE DEBUG: Legacy BOM payload for N8N:', {
-                name: bomPayload.name,
-                itemCount: bomPayload.bomData.length,
-                totalCost: bomPayload.bomData.reduce((sum, item) => sum + item.extendedCost, 0)
-              });
-              
-              const response = await n8nService.sendBOMSave(bomPayload);
-              
-              console.log('📥 SAVE DEBUG: N8N legacy response:', response);
-              
-              if (response.success) {
-                console.log('✅ SAVE DEBUG: BOM sent to N8N successfully, ID:', response.bomId);
-              } else {
-                console.warn('⚠️ SAVE DEBUG: N8N BOM save failed:', response.error);
-              }
-            } catch (error) {
-              console.error('❌ SAVE DEBUG: Failed to send BOM to N8N:', error);
-            }
-          }
         } else {
           console.error('❌ SAVE DEBUG: Failed to save legacy BOM');
         }
@@ -3011,40 +2958,17 @@ const BOMManager = () => {
       
       console.log('📝 SAVE_BOM DEBUG: State updated successfully');
       
-      // Send to N8N webhook if connected
-      if (n8nConnected && n8nService.isInitialized()) {
+      // Save to Firebase if connected
+      if (firebaseConnected && firebaseService.isInitialized()) {
         try {
-          console.log('🚀 SAVE_BOM DEBUG: Sending new named BOM to N8N...');
-          const n8nPayload = {
-            bomId,
-            name,
-            description,
-            bomData,
-            createdAt: new Date().toISOString(),
-            source: 'bom-generator'
-          };
-          
-          console.log('📤 SAVE_BOM DEBUG: N8N payload:', {
-            bomId: n8nPayload.bomId,
-            name: n8nPayload.name,
-            itemCount: n8nPayload.bomData.length,
-            totalCost: n8nPayload.bomData.reduce((sum, item) => sum + item.extendedCost, 0)
-          });
-          
-          const response = await n8nService.sendBOMSave(n8nPayload);
-          
-          console.log('📥 SAVE_BOM DEBUG: N8N response:', response);
-          
-          if (response.success) {
-            console.log('✅ SAVE_BOM DEBUG: Named BOM sent to N8N successfully');
-          } else {
-            console.warn('⚠️ SAVE_BOM DEBUG: N8N named BOM save failed:', response.error);
-          }
+          console.log('� SAVE_BOM DEBUG: Saving named BOM to Firebase...');
+          const firebaseBomId = await firebaseService.saveNamedBOM(name, description, bomData);
+          console.log('✅ SAVE_BOM DEBUG: Named BOM saved to Firebase with ID:', firebaseBomId);
         } catch (error) {
-          console.error('❌ SAVE_BOM DEBUG: Failed to send named BOM to N8N:', error);
+          console.error('❌ SAVE_BOM DEBUG: Failed to save named BOM to Firebase:', error);
         }
       } else {
-        console.log('🔌 SAVE_BOM DEBUG: N8N not connected, skipping webhook');
+        console.log('🔌 SAVE_BOM DEBUG: Firebase not connected, skipping cloud save');
       }
     } catch (error) {
       console.error('❌ SAVE_BOM DEBUG: Failed to save named BOM:', error);
@@ -3565,12 +3489,32 @@ const BOMManager = () => {
           </Card>
           <Card className="p-6 bg-green-50">
             <div className="flex items-center space-x-3">
-              <CheckCircle className="text-green-600" size={24} />
+              <Database className="text-green-600" size={24} />
               <div>
-                <p className="text-2xl font-semibold text-green-900">{selectedItems.size}</p>
-                <p className="text-sm text-green-600">Selected</p>
+                <p className="text-2xl font-semibold text-green-900">
+                  {bomData.filter(item => {
+                    const availability = checkInventoryAvailability(item.partNumber);
+                    return availability.available && availability.currentStock >= item.quantity;
+                  }).length}
+                </p>
+                <p className="text-sm text-green-600">In Stock</p>
+                <p className="text-xs text-green-600">
+                  {bomData.filter(item => {
+                    const availability = checkInventoryAvailability(item.partNumber);
+                    return availability.available && availability.currentStock > 0 && availability.currentStock < item.quantity;
+                  }).length} partial
+                </p>
+              </div>
+            </div>
+          </Card>
+          <Card className="p-6 bg-blue-50">
+            <div className="flex items-center space-x-3">
+              <CheckCircle className="text-blue-600" size={24} />
+              <div>
+                <p className="text-2xl font-semibold text-blue-900">{selectedItems.size}</p>
+                <p className="text-sm text-blue-600">Selected</p>
                 {selectedItems.size > 0 && (
-                  <p className="text-xs text-green-600">${selectedCost.toFixed(2)}</p>
+                  <p className="text-xs text-blue-600">${selectedCost.toFixed(2)}</p>
                 )}
               </div>
             </div>
@@ -3661,6 +3605,7 @@ const BOMManager = () => {
                   <th className="px-3 py-2 text-left text-sm font-semibold text-gray-900">Description</th>
                   <th className="px-3 py-2 text-left text-sm font-semibold text-gray-900">Category</th>
                   <th className="px-3 py-2 text-right text-sm font-semibold text-gray-900">Qty</th>
+                  <th className="px-3 py-2 text-right text-sm font-semibold text-gray-900">Stock</th>
                   <th className="px-3 py-2 text-right text-sm font-semibold text-gray-900">Unit Cost</th>
                   <th className="px-3 py-2 text-right text-sm font-semibold text-gray-900">Total</th>
                   <th className="px-3 py-2 text-left text-sm font-semibold text-gray-900">Supplier</th>
@@ -3684,7 +3629,16 @@ const BOMManager = () => {
                       />
                     </td>
                     <td className="px-3 py-1 text-xs font-mono font-medium text-gray-900 leading-tight">
-                      {renderEditableCell(item, 'partNumber', item.partNumber)}
+                      <div>
+                        {renderEditableCell(item, 'partNumber', item.partNumber)}
+                        {item.fromInventory && (
+                          <div className="mt-0.5">
+                            <Badge className="bg-green-100 text-green-800 text-xs py-0 px-1">
+                              From Inventory
+                            </Badge>
+                          </div>
+                        )}
+                      </div>
                     </td>
                     <td className="px-3 py-1 text-xs text-gray-900 leading-tight">
                       <div>
@@ -3702,6 +3656,37 @@ const BOMManager = () => {
                     </td>
                     <td className="px-3 py-1 text-xs text-right text-gray-900 leading-tight">
                       {renderEditableCell(item, 'quantity', item.quantity, 'text-right')}
+                    </td>
+                    <td className="px-3 py-1 text-xs text-right text-gray-900 leading-tight">
+                      {(() => {
+                        const availability = checkInventoryAvailability(item.partNumber);
+                        if (availability.available) {
+                          return (
+                            <div className="flex flex-col items-end">
+                              <span className="text-green-600 font-medium">
+                                {availability.currentStock}
+                              </span>
+                              <span className="text-xs text-gray-500">
+                                {availability.currentStock >= item.quantity ? 'Available' : 'Partial'}
+                              </span>
+                            </div>
+                          );
+                        } else if (availability.inventoryItem) {
+                          return (
+                            <div className="flex flex-col items-end">
+                              <span className="text-red-600 font-medium">0</span>
+                              <span className="text-xs text-red-500">Out of Stock</span>
+                            </div>
+                          );
+                        } else {
+                          return (
+                            <div className="flex flex-col items-end">
+                              <span className="text-gray-400">-</span>
+                              <span className="text-xs text-gray-400">Not Tracked</span>
+                            </div>
+                          );
+                        }
+                      })()}
                     </td>
                     <td className="px-3 py-1 text-xs text-right text-gray-900 leading-tight">
                       {renderEditableCell(item, 'unitCost', item.unitCost, 'text-right')}
@@ -3766,7 +3751,7 @@ const BOMManager = () => {
                 {/* Empty state */}
                 {filteredData.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="px-3 py-12 text-center">
+                    <td colSpan={10} className="px-3 py-12 text-center">
                       <div className="flex flex-col items-center space-y-3">
                         <Package size={48} className="text-gray-300" />
                         <div className="text-gray-500">
@@ -3787,7 +3772,7 @@ const BOMManager = () => {
                 
                 <tr className="bg-gray-100 font-semibold border-t-2 border-gray-300">
                   <td></td>
-                  <td colSpan={5} className="px-3 py-1.5 text-xs text-gray-900">TOTAL</td>
+                  <td colSpan={6} className="px-3 py-1.5 text-xs text-gray-900">TOTAL</td>
                   <td className="px-3 py-1.5 text-sm text-right font-bold text-gray-900">
                     ${totalCost.toFixed(2)}
                   </td>
@@ -3803,10 +3788,12 @@ const BOMManager = () => {
           <h4 className="font-semibold text-gray-900 mb-2">📋 System Information</h4>
           <div className="text-sm text-gray-700 space-y-1">
             <p>• <strong>Click to Edit:</strong> Click any cell to edit values directly</p>
+            <p>• <strong>Inventory Integration:</strong> Real-time stock levels from Firebase inventory</p>
+            <p className="text-xs text-green-600 ml-4">📦 Green = Available, Red = Out of Stock, Gray = Not Tracked</p>
+            <p>• <strong>Auto-Population:</strong> Part numbers from inventory auto-fill description and cost</p>
             <p>• <strong>Dynamic Dropdowns:</strong> Categories and suppliers auto-update from your data</p>
             <p>• <strong>Smart Suggestions:</strong> System learns your naming patterns and preferences</p>
-            <p>• <strong>Storage:</strong> Data saved locally in browser (no server required)</p>
-            <p className="text-xs text-blue-600 ml-4">📌 SharePoint Integration coming soon!</p>
+            <p>• <strong>Firebase Storage:</strong> Data synced to cloud database for reliability</p>
             <p>• <strong>Export/Import:</strong> JSON format for data sharing and backup</p>
             <p>• <strong>DigiKey Integration:</strong> CSV export and direct product links</p>
             <p>• <strong>EasyEDA Integration:</strong> Component search, library access, and BOM export</p>
