@@ -6,7 +6,6 @@ import { N8NWebhookService } from './services/N8NWebhookService';
 import ImportService from './services/ImportService';
 import PartNumberService from './services/partNumberService';
 import NLPService from './services/NLPService';
-import EnhancedEasyEDAService from './services/EnhancedEasyEDAService';
 import DigikeyService from './services/DigikeyService';
 import { 
   Plus, 
@@ -61,6 +60,7 @@ interface BOMItem {
   confidence?: number;
   originalInput?: string;
   fromInventory?: boolean;
+  inventoryValidated?: boolean;
   specifications?: {
     voltage?: string;
     current?: string;
@@ -1163,45 +1163,225 @@ const BulkAddDialog = ({
   isOpen, 
   onClose, 
   onAdd, 
-  existingPartNumbers 
+  existingPartNumbers,
+  firebaseInventory 
 }: {
   isOpen: boolean;
   onClose: () => void;
   onAdd: (items: any[]) => void;
   existingPartNumbers: string[];
+  firebaseInventory: any[];
 }) => {
+  const [columnOrder, setColumnOrder] = useState('');
   const [bulkText, setBulkText] = useState('');
   const [previewData, setPreviewData] = useState<BOMItem[]>([]);
   const [showPreview, setShowPreview] = useState(false);
+  const [selectedPartNumber, setSelectedPartNumber] = useState('');
+
+  // Autocomplete Part Number Input Component
+  const PartNumberAutocomplete = ({ value, onChange, onSelect }: { 
+    value: string; 
+    onChange: (value: string) => void; 
+    onSelect: (item: any) => void;
+  }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [searchTerm, setSearchTerm] = useState(value);
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    const filteredItems = firebaseInventory.filter(item => 
+      item.partNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.componentName.toLowerCase().includes(searchTerm.toLowerCase())
+    ).slice(0, 10); // Limit to 10 results
+
+    useEffect(() => {
+      const handleClickOutside = (event: MouseEvent) => {
+        if (inputRef.current && !inputRef.current.contains(event.target as Node)) {
+          setIsOpen(false);
+        }
+      };
+
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const newValue = e.target.value;
+      setSearchTerm(newValue);
+      onChange(newValue);
+      setIsOpen(true);
+    };
+
+    const handleItemSelect = (item: any) => {
+      setSearchTerm(item.partNumber);
+      onChange(item.partNumber);
+      onSelect(item);
+      setIsOpen(false);
+    };
+
+    return (
+      <div className="relative" ref={inputRef}>
+        <input
+          type="text"
+          value={searchTerm}
+          onChange={handleInputChange}
+          onFocus={() => setIsOpen(true)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          placeholder="Search part numbers from inventory..."
+        />
+        
+        {isOpen && filteredItems.length > 0 && (
+          <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+            {filteredItems.map((item, index) => (
+              <div
+                key={index}
+                onClick={() => handleItemSelect(item)}
+                className="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
+              >
+                <div className="flex justify-between items-start">
+                  <div className="flex-1">
+                    <div className="font-medium text-sm">{item.partNumber}</div>
+                    <div className="text-xs text-gray-600 truncate">{item.componentName}</div>
+                  </div>
+                  <div className="text-right ml-2">
+                    <div className="text-xs text-gray-500">Stock: {item.currentStock}</div>
+                    <div className="text-xs text-green-600">${item.unitCost?.toFixed(2)}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        
+        {isOpen && searchTerm && filteredItems.length === 0 && (
+          <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg p-3">
+            <div className="text-sm text-gray-500">No matching parts found in inventory</div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const parseTextInput = () => {
+    if (!columnOrder.trim()) {
+      alert('Please specify the column order first');
+      return;
+    }
+
     const lines = bulkText.split('\n').filter(line => line.trim());
+    const columnNames = columnOrder.split(',').map(col => col.trim().toLowerCase());
+    
     const parsed = lines.map((line, index) => {
       const parts = line.split(/\t|,/).map(p => p.trim());
-      const description = parts[0] || `Bulk Item ${index + 1}`;
-      const category = parts[1] || 'Other';
-      const quantity = parseInt(parts[2]) || 1;
-      const unitCost = parseFloat(parts[3]) || 0;
-      const supplier = parts[4] || '';
+      
+      // Create mapping based on column order
+      const itemData: any = {};
+      columnNames.forEach((colName, colIndex) => {
+        const value = parts[colIndex] || '';
+        
+        // Map column names to our internal structure
+        switch (colName) {
+          case 'description':
+            itemData.description = value;
+            break;
+          case 'category':
+            itemData.category = value;
+            break;
+          case 'quantity':
+            itemData.quantity = parseInt(value) || 1;
+            break;
+          case 'unitcost':
+          case 'unit cost':
+          case 'cost':
+          case 'price':
+            itemData.unitCost = parseFloat(value.replace(/[$,]/g, '')) || 0;
+            break;
+          case 'supplier':
+          case 'vendor':
+            itemData.supplier = value;
+            break;
+          case 'digikeyPN':
+          case 'digikey pn':
+          case 'digikey':
+          case 'digi-key':
+            itemData.digikeyPN = value;
+            break;
+          case 'manufacturerPN':
+          case 'manufacturer pn':
+          case 'mfr pn':
+          case 'mpn':
+            itemData.manufacturerPN = value;
+            break;
+          case 'partnumber':
+          case 'part number':
+          case 'pn':
+            itemData.partNumber = value;
+            break;
+          case 'leadtime':
+          case 'lead time':
+            itemData.leadTime = parseInt(value) || 1;
+            break;
+          case 'revision':
+          case 'rev':
+            itemData.revision = value;
+            break;
+          case 'status':
+            itemData.status = value;
+            break;
+          case 'requiredfor':
+          case 'required for':
+            itemData.requiredFor = value;
+            break;
+          default:
+            // Store unmapped fields as custom properties
+            itemData[colName] = value;
+        }
+      });
 
-      return {
+      // Validate part number against inventory if provided
+      let inventoryItem = null;
+      if (itemData.partNumber && firebaseInventory.length > 0) {
+        inventoryItem = firebaseInventory.find(item => 
+          item.partNumber.toLowerCase() === itemData.partNumber.toLowerCase()
+        );
+        
+        if (!inventoryItem) {
+          console.warn(`⚠️ Part number "${itemData.partNumber}" not found in inventory`);
+        }
+      }
+
+      // Create final BOM item with defaults, use inventory data if available
+      const finalItem = {
         id: Date.now() + index,
-        partNumber: PartNumberService.generatePartNumber(category, existingPartNumbers),
-        description,
-        category,
-        quantity,
+        partNumber: itemData.partNumber || PartNumberService.generatePartNumber(itemData.category || 'Other', existingPartNumbers),
+        description: itemData.description || (inventoryItem ? inventoryItem.componentName : `Bulk Item ${index + 1}`),
+        category: itemData.category || (inventoryItem ? inventoryItem.category : 'Other'),
+        quantity: itemData.quantity || 1,
         unit: 'EA',
-        unitCost,
-        extendedCost: quantity * unitCost,
-        supplier,
-        leadTime: 1,
-        revision: 'A',
-        status: 'Active',
-        requiredFor: 'Base System',
-        digikeyPN: '',
-        manufacturerPN: ''
+        unitCost: itemData.unitCost || (inventoryItem ? inventoryItem.unitCost : 0),
+        extendedCost: (itemData.quantity || 1) * (itemData.unitCost || (inventoryItem ? inventoryItem.unitCost : 0)),
+        supplier: itemData.supplier || (inventoryItem ? inventoryItem.supplier : ''),
+        leadTime: itemData.leadTime || (inventoryItem ? inventoryItem.leadTime : 1),
+        revision: itemData.revision || 'A',
+        status: itemData.status || 'Active',
+        requiredFor: itemData.requiredFor || 'Base System',
+        digikeyPN: itemData.digikeyPN || (inventoryItem ? inventoryItem.digikeyPN : ''),
+        manufacturerPN: itemData.manufacturerPN || (inventoryItem ? inventoryItem.partNumber : ''),
+        fromInventory: !!inventoryItem,
+        inventoryValidated: !!inventoryItem
       };
+
+      return finalItem;
     });
+
+    // Check for invalid part numbers
+    const invalidParts = parsed.filter(item => item.partNumber && !item.inventoryValidated);
+    if (invalidParts.length > 0) {
+      const invalidPartNumbers = invalidParts.map(item => item.partNumber).join(', ');
+      const proceed = confirm(
+        `⚠️ Warning: The following part numbers are not in your inventory database:\n\n${invalidPartNumbers}\n\nDo you want to continue anyway? These parts will be marked as "not validated against inventory."`
+      );
+      if (!proceed) return;
+    }
 
     setPreviewData(parsed);
     setShowPreview(true);
@@ -1209,10 +1389,21 @@ const BulkAddDialog = ({
 
   const handleAdd = () => {
     onAdd(previewData);
+    setColumnOrder('');
     setBulkText('');
     setPreviewData([]);
     setShowPreview(false);
     onClose();
+  };
+
+  const getColumnOrderExample = () => {
+    const examples = [
+      'DigiKey PN, Description, Quantity, Unit Cost',
+      'Part Number, Description, Category, Quantity, Unit Cost, Supplier',
+      'Description, Category, Quantity, Unit Cost',
+      'Manufacturer PN, Description, Quantity, Unit Cost, Supplier'
+    ];
+    return examples[Math.floor(Math.random() * examples.length)];
   };
 
   if (!isOpen) return null;
@@ -1227,7 +1418,7 @@ const BulkAddDialog = ({
             </div>
             <div>
               <h3 className="text-xl font-semibold">Bulk Add Parts</h3>
-              <p className="text-sm text-gray-600">Add multiple parts at once</p>
+              <p className="text-sm text-gray-600">Add multiple parts at once with custom column order</p>
             </div>
           </div>
           <button onClick={onClose} className="p-1 text-gray-500 hover:text-gray-700">
@@ -1236,17 +1427,86 @@ const BulkAddDialog = ({
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Single Item Add from Inventory */}
+          <div className="bg-blue-50 p-4 rounded-lg">
+            <h4 className="font-semibold mb-3 text-blue-800">Add Single Item from Inventory</h4>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Part Number
+                </label>
+                <PartNumberAutocomplete
+                  value={selectedPartNumber}
+                  onChange={setSelectedPartNumber}
+                  onSelect={(item) => {
+                    setSelectedPartNumber(item.partNumber);
+                    // Auto-populate other fields based on inventory item
+                    const newItem = {
+                      id: Date.now(),
+                      partNumber: item.partNumber,
+                      description: item.componentName,
+                      category: item.category || 'Unknown',
+                      quantity: 1,
+                      unit: 'EA',
+                      unitCost: item.unitCost || 0,
+                      extendedCost: item.unitCost || 0,
+                      supplier: item.supplier || 'Unknown',
+                      leadTime: item.leadTime || 1,
+                      revision: 'A',
+                      status: 'Active',
+                      requiredFor: 'Base System',
+                      digikeyPN: item.digikeyPN || '',
+                      manufacturerPN: item.partNumber,
+                      fromInventory: true
+                    };
+                    onAdd([newItem]);
+                    setSelectedPartNumber('');
+                    onClose();
+                  }}
+                />
+              </div>
+              <div className="text-xs text-gray-600">
+                <div className="flex items-center space-x-2">
+                  <span className="inline-block w-2 h-2 bg-green-500 rounded-full"></span>
+                  <span>{firebaseInventory.length} parts available in inventory</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Bulk Add Section */}
           <div>
-            <h4 className="font-semibold mb-3">Input Format</h4>
+            <h4 className="font-semibold mb-3">Step 1: Define Column Order</h4>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Column Order (comma-separated)
+              </label>
+              <input
+                type="text"
+                value={columnOrder}
+                onChange={(e) => setColumnOrder(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder={getColumnOrderExample()}
+              />
+              <div className="mt-2 text-xs text-gray-600">
+                <p><strong>Available columns:</strong> Description, Category, Quantity, Unit Cost, Supplier, DigiKey PN, Manufacturer PN, Part Number, Lead Time, Revision, Status, Required For</p>
+                <p className="mt-1 text-amber-600"><strong>Note:</strong> Part Numbers will be validated against your inventory database</p>
+              </div>
+            </div>
+
+            <h4 className="font-semibold mb-3">Step 2: Enter Data</h4>
             <div className="bg-gray-50 p-4 rounded-lg mb-4">
-              <p className="text-sm text-gray-700 mb-2">Enter one part per line in this format:</p>
-              <code className="text-xs bg-white p-2 rounded block">
-                Description, Category, Quantity, Unit Cost, Supplier
-              </code>
+              <p className="text-sm text-gray-700 mb-2">Enter one part per line matching your column order:</p>
+              {columnOrder && (
+                <code className="text-xs bg-white p-2 rounded block">
+                  {columnOrder}
+                </code>
+              )}
               <div className="mt-2 text-xs text-gray-600">
                 <p>• Separate fields with commas or tabs</p>
-                <p>• Only description is required</p>
-                <p>• Part numbers will be auto-generated</p>
+                <p>• Fields will be mapped to your column order</p>
+                <p>• Part numbers must exist in your inventory database</p>
+                <p>• Missing fields will use defaults</p>
               </div>
             </div>
 
@@ -1257,72 +1517,90 @@ const BulkAddDialog = ({
               <textarea
                 value={bulkText}
                 onChange={(e) => setBulkText(e.target.value)}
-                rows={10}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="STM32F407VGT6 Microcontroller, IC, 1, 12.50, DigiKey&#10;10K Resistor 1%, Resistor, 50, 0.12, DigiKey&#10;100nF Capacitor, Capacitor, 25, 0.18, DigiKey"
+                rows={8}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+                placeholder={columnOrder ? 
+                  `Match your column order: ${columnOrder}\n\nExample:\nC123456, STM32F407VGT6 Microcontroller, 1, 12.50\nC789012, 10K Resistor 1%, 50, 0.12\nC345678, 100nF Capacitor, 25, 0.18` :
+                  "First, define your column order above..."
+                }
+                disabled={!columnOrder.trim()}
               />
             </div>
 
             <div className="flex space-x-2">
-              <Button onClick={parseTextInput} disabled={!bulkText.trim()}>
+              <Button onClick={parseTextInput} disabled={!bulkText.trim() || !columnOrder.trim()}>
                 <Eye size={16} />
                 Preview
               </Button>
               <Button variant="outline" onClick={() => {
+                setColumnOrder('');
                 setBulkText('');
                 setShowPreview(false);
                 setPreviewData([]);
               }}>
-                Clear
+                Clear All
               </Button>
             </div>
           </div>
+        </div>
 
-          {showPreview && (
-            <div>
-              <div className="flex justify-between items-center mb-3">
-                <h4 className="font-semibold">Preview ({previewData.length} parts)</h4>
-                <div className="text-sm text-gray-600">
-                  Total: ${previewData.reduce((sum, item) => sum + item.extendedCost, 0).toFixed(2)}
-                </div>
-              </div>
-
-              <div className="border rounded-lg max-h-96 overflow-y-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 sticky top-0">
-                    <tr>
-                      <th className="px-3 py-2 text-left">Part #</th>
-                      <th className="px-3 py-2 text-left">Description</th>
-                      <th className="px-3 py-2 text-right">Qty</th>
-                      <th className="px-3 py-2 text-right">Cost</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {previewData.map((item, index) => (
-                      <tr key={index} className="hover:bg-gray-50">
-                        <td className="px-3 py-2 font-mono text-xs">{item.partNumber}</td>
-                        <td className="px-3 py-2">{item.description}</td>
-                        <td className="px-3 py-2 text-right">{item.quantity}</td>
-                        <td className="px-3 py-2 text-right">${item.extendedCost.toFixed(2)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="flex justify-end space-x-2 mt-4">
-                <Button variant="outline" onClick={() => setShowPreview(false)}>
-                  <EyeOff size={16} />
-                  Hide Preview
-                </Button>
-                <Button variant="success" onClick={handleAdd}>
-                  <PlusCircle size={16} />
-                  Add {previewData.length} Parts
-                </Button>
+        {/* Preview Section */}
+        {showPreview && (
+          <div className="mt-6">
+            <div className="flex justify-between items-center mb-3">
+              <h4 className="font-semibold">Preview ({previewData.length} parts)</h4>
+              <div className="text-sm text-gray-600">
+                Total: ${previewData.reduce((sum, item) => sum + item.extendedCost, 0).toFixed(2)}
               </div>
             </div>
-          )}
-        </div>
+
+            <div className="border rounded-lg max-h-96 overflow-y-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 sticky top-0">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Part #</th>
+                    <th className="px-3 py-2 text-left">Description</th>
+                    <th className="px-3 py-2 text-left">Category</th>
+                    <th className="px-3 py-2 text-right">Qty</th>
+                    <th className="px-3 py-2 text-right">Cost</th>
+                    <th className="px-3 py-2 text-left">Supplier</th>
+                    <th className="px-3 py-2 text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {previewData.map((item, index) => (
+                    <tr key={index} className="hover:bg-gray-50">
+                      <td className="px-3 py-2 font-mono text-xs">{item.partNumber}</td>
+                      <td className="px-3 py-2">{item.description}</td>
+                      <td className="px-3 py-2 text-xs">{item.category}</td>
+                      <td className="px-3 py-2 text-right">{item.quantity}</td>
+                      <td className="px-3 py-2 text-right">${item.extendedCost.toFixed(2)}</td>
+                      <td className="px-3 py-2 text-xs">{item.supplier}</td>
+                      <td className="px-3 py-2 text-center">
+                        {item.inventoryValidated ? (
+                          <Badge variant="success">✓ In Inventory</Badge>
+                        ) : (
+                          <Badge variant="warning">⚠ Not Found</Badge>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex justify-end space-x-2 mt-4">
+              <Button variant="outline" onClick={() => setShowPreview(false)}>
+                <EyeOff size={16} />
+                Hide Preview
+              </Button>
+              <Button variant="success" onClick={handleAdd}>
+                <PlusCircle size={16} />
+                Add {previewData.length} Parts
+              </Button>
+            </div>
+          </div>
+        )}
       </Card>
     </div>
   );
@@ -2348,7 +2626,7 @@ const BOMManager = () => {
   // Firebase/n8n states
   const [firebaseConnected, setFirebaseConnected] = useState(false);
   const [n8nConnected, setN8nConnected] = useState(false);
-  const [isLoadingFirebaseData, setIsLoadingFirebaseData] = useState(false);
+
   const [firebaseInventory, setFirebaseInventory] = useState<any[]>([]);
   const [savingToFirebase, setSavingToFirebase] = useState(false);
   
@@ -3427,6 +3705,7 @@ const BOMManager = () => {
         onClose={() => setShowBulkAdd(false)}
         onAdd={handleBulkAdd}
         existingPartNumbers={bomData.map(item => item.partNumber)}
+        firebaseInventory={firebaseInventory}
       />
       
       <ImportDialog
