@@ -24,13 +24,13 @@
 ```
 
 ### 2. `bom_templates` Collection
-**Document ID**: Auto-generated or custom (e.g., "product-a-bom-v1")
+**Document ID**: Auto-generated or custom (e.g., "automation-system-v1")
 
 ```javascript
 {
-  bomId: "product-a-bom-v1",
-  name: "Product A Manufacturing BOM",
-  description: "Complete bill of materials for Product A",
+  bomId: "automation-system-v1",
+  name: "Automation System BOM Template",
+  description: "Complete bill of materials for automation system",
   version: "1.0",
   status: "active", // active, draft, archived
   parts: [
@@ -48,9 +48,9 @@
     // ... more parts
   ],
   totalEstimatedCost: 1250.75,
+  createdBy: "system",
   createdAt: "2025-07-13T10:30:00Z",
-  updatedAt: "2025-07-13T10:30:00Z",
-  createdBy: "system"
+  updatedAt: "2025-07-13T10:30:00Z"
 }
 ```
 
