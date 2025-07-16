@@ -79,6 +79,7 @@ export interface BOMTemplate {
   createdBy: string;
 }
 
+
 export class HybridFirebaseBOMService {
   private initialized = false;
   private inventoryUnsubscribe: Unsubscribe | null = null;

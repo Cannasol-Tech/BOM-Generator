@@ -5,12 +5,14 @@
  * to identify and fix parsing issues with various Excel file formats.
  */
 
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
 // Mock SheetJS for testing
 const XLSX = {
-  read: jest.fn(),
+  read: vi.fn(),
   utils: {
-    sheet_to_json: jest.fn(),
-    sheet_to_csv: jest.fn()
+    sheet_to_json: vi.fn(),
+    sheet_to_csv: vi.fn()
   }
 };
 
@@ -44,8 +46,29 @@ class MockFileReader {
 
 global.FileReader = MockFileReader;
 
-// Import the service (this would need to be extracted from main.tsx)
-const ImportService = {
+// Mock the ImportService module
+vi.mock('../services/ImportService', () => {
+  return {
+    default: {
+      parseCSV: vi.fn(),
+      parseExcel: vi.fn(),
+      parseExcelWithTitleDetection: vi.fn(),
+      parseCSVEnhanced: vi.fn()
+    },
+    ImportService: {
+      parseCSV: vi.fn(),
+      parseExcel: vi.fn(),
+      parseExcelWithTitleDetection: vi.fn(),
+      parseCSVEnhanced: vi.fn()
+    }
+  };
+});
+
+// Import the service
+import ImportService from '../services/ImportService';
+
+// Create a real implementation for testing (since we're mocking the actual service)
+const RealImportService = {
   parseCSV: (csvText) => {
     const lines = csvText.split(/\r?\n/).filter(line => line.trim());
     if (lines.length === 0) return [];
@@ -151,7 +174,7 @@ const ImportService = {
               RS: '\n'
             });
             
-            const csvData = ImportService.parseCSV(csvString);
+            const csvData = RealImportService.parseCSV(csvString);
             
             if (csvData.length > 0) {
               resolve(csvData);
@@ -191,16 +214,16 @@ const ImportService = {
 
 describe('Excel Parser Tests', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   describe('CSV Parser Tests', () => {
-    test('should parse simple CSV correctly', () => {
+    it('should parse simple CSV correctly', () => {
       const csvText = `Part Number,Description,Quantity,Cost
 R001,10K Resistor,100,0.12
 C001,100nF Capacitor,50,0.25`;
 
-      const result = ImportService.parseCSV(csvText);
+      const result = RealImportService.parseCSV(csvText);
       
       expect(result).toHaveLength(2);
       expect(result[0]).toEqual({
@@ -211,12 +234,12 @@ C001,100nF Capacitor,50,0.25`;
       });
     });
 
-    test('should handle CSV with quoted fields containing commas', () => {
+    it('should handle CSV with quoted fields containing commas', () => {
       const csvText = `Company,Description,Cost
 "Acme, Inc.",Widget,10.50
 "Smith & Co.",Gadget,25.00`;
 
-      const result = ImportService.parseCSV(csvText);
+      const result = RealImportService.parseCSV(csvText);
       
       // Current parser will FAIL this test - it doesn't handle quoted commas
       console.log('CSV Parser Result:', result);
@@ -226,25 +249,25 @@ C001,100nF Capacitor,50,0.25`;
       expect(result[0]['Company']).toBe('Acme, Inc.');
     });
 
-    test('should handle empty fields', () => {
+    it('should handle empty fields', () => {
       const csvText = `Part,Description,Cost
 R001,,0.12
 ,Some Description,`;
 
-      const result = ImportService.parseCSV(csvText);
+      const result = RealImportService.parseCSV(csvText);
       
       expect(result).toHaveLength(2);
       expect(result[0]['Description']).toBe('');
       expect(result[1]['Part']).toBe('');
     });
 
-    test('should handle rows with mismatched column count gracefully', () => {
+    it('should handle rows with mismatched column count gracefully', () => {
       const csvText = `Part,Description,Cost
 R001,10K Resistor,0.12
 C001,100nF Capacitor
 IC001,MCU,15.50,Extra Field`;
 
-      const result = ImportService.parseCSV(csvText);
+      const result = RealImportService.parseCSV(csvText);
       
       // Enhanced parser should handle all rows by padding/truncating
       expect(result).toHaveLength(3);
@@ -253,15 +276,15 @@ IC001,MCU,15.50,Extra Field`;
       expect(result[2]['Part']).toBe('IC001'); // Extra field truncated
     });
 
-    test('should return empty array for insufficient data', () => {
+    it('should return empty array for insufficient data', () => {
       const csvText = `Part Number`;
-      const result = ImportService.parseCSV(csvText);
+      const result = RealImportService.parseCSV(csvText);
       expect(result).toHaveLength(0);
     });
   });
 
   describe('Excel Parser - Method 1 (Standard JSON) Tests', () => {
-    test('should parse normal Excel with proper headers', async () => {
+    it('should parse normal Excel with proper headers', async () => {
       const mockWorkbook = {
         SheetNames: ['Sheet1'],
         Sheets: {
@@ -280,7 +303,7 @@ IC001,MCU,15.50,Extra Field`;
 
       const file = new MockFile([1, 2, 3], 'test.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       
-      const result = await ImportService.parseExcel(file);
+      const result = await RealImportService.parseExcel(file);
       
       expect(result).toHaveLength(2);
       expect(result[0]).toEqual({
@@ -291,7 +314,7 @@ IC001,MCU,15.50,Extra Field`;
       });
     });
 
-    test('should handle Excel with title row by using CSV fallback', async () => {
+    it('should handle Excel with title row by using CSV fallback', async () => {
       const mockWorkbook = {
         SheetNames: ['Sheet1'],
         Sheets: {
@@ -323,7 +346,7 @@ R001,10K Resistor,100,0.12`;
 
       const file = new MockFile([1, 2, 3], 'test.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       
-      const result = await ImportService.parseExcel(file);
+      const result = await RealImportService.parseExcel(file);
       
       // Debug what we actually got
       console.log('CSV Fallback Test Result:', JSON.stringify(result, null, 2));
@@ -334,7 +357,7 @@ R001,10K Resistor,100,0.12`;
       expect(Object.keys(result[0]).length).toBeGreaterThan(0);
     });
 
-    test('should handle empty Excel file', async () => {
+    it('should handle empty Excel file', async () => {
       const mockWorkbook = {
         SheetNames: ['Sheet1'],
         Sheets: {
@@ -350,12 +373,12 @@ R001,10K Resistor,100,0.12`;
 
       const file = new MockFile([1, 2, 3], 'empty.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       
-      await expect(ImportService.parseExcel(file)).rejects.toThrow('Unable to parse Excel file with any method');
+      await expect(RealImportService.parseExcel(file)).rejects.toThrow('Unable to parse Excel file with any method');
     });
   });
 
   describe('Excel Parser - Method 2 (CSV Conversion) Tests', () => {
-    test('should use CSV conversion when Method 1 fails', async () => {
+    it('should use CSV conversion when Method 1 fails', async () => {
       const mockWorkbook = {
         SheetNames: ['Sheet1'],
         Sheets: {
@@ -380,7 +403,7 @@ C001,100nF Capacitor,50,0.25`;
 
       const file = new MockFile([1, 2, 3], 'test.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       
-      const result = await ImportService.parseExcel(file);
+      const result = await RealImportService.parseExcel(file);
       
       // Should successfully parse via CSV conversion
       expect(result).toHaveLength(2);
@@ -390,17 +413,17 @@ C001,100nF Capacitor,50,0.25`;
   });
 
   describe('Excel Parser - Error Handling Tests', () => {
-    test('should handle SheetJS parsing errors', async () => {
+    it('should handle SheetJS parsing errors', async () => {
       XLSX.read.mockImplementation(() => {
         throw new Error('Invalid Excel file');
       });
 
       const file = new MockFile([1, 2, 3], 'corrupt.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       
-      await expect(ImportService.parseExcel(file)).rejects.toThrow('Invalid Excel file');
+      await expect(RealImportService.parseExcel(file)).rejects.toThrow('Invalid Excel file');
     });
 
-    test('should handle FileReader errors', async () => {
+    it('should handle FileReader errors', async () => {
       const file = new MockFile([1, 2, 3], 'test.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       
       // Mock FileReader error
@@ -420,14 +443,14 @@ C001,100nF Capacitor,50,0.25`;
         }
       };
 
-      await expect(ImportService.parseExcel(file)).rejects.toThrow('Failed to read file');
+      await expect(RealImportService.parseExcel(file)).rejects.toThrow('Failed to read file');
       
       global.FileReader = originalFileReader;
     });
   });
 
   describe('Real-world Excel Scenarios', () => {
-    test('should handle Excel with merged header cells', async () => {
+    it('should handle Excel with merged header cells', async () => {
       const mockWorkbook = {
         SheetNames: ['Inventory'],
         Sheets: {
@@ -456,13 +479,13 @@ C-001-001,100nF Ceramic Capacitor 50V,50,0.25`;
 
       const file = new MockFile([1, 2, 3], 'inventory.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       
-      const result = await ImportService.parseExcel(file);
+      const result = await RealImportService.parseExcel(file);
       
       // Should fall back to CSV conversion, but CSV parser may fail due to empty rows
       console.log('Merged cells result:', result);
     });
 
-    test('should handle Excel with complex formulas and formatting', async () => {
+    it('should handle Excel with complex formulas and formatting', async () => {
       const mockWorkbook = {
         SheetNames: ['BOM'],
         Sheets: {
@@ -496,7 +519,7 @@ C-001-001,100nF Ceramic Capacitor 50V,50,0.25`;
 
       const file = new MockFile([1, 2, 3], 'complex.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       
-      const result = await ImportService.parseExcel(file);
+      const result = await RealImportService.parseExcel(file);
       
       expect(result).toHaveLength(2);
       expect(result[0]['Part Number']).toBe('R-001-001');

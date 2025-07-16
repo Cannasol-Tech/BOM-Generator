@@ -1,6 +1,46 @@
 import { describe, it, expect, vi } from 'vitest';
 
-// Mock Firebase config
+// Mock Firebase SDK first
+vi.mock('firebase/app', () => ({
+  initializeApp: vi.fn(() => ({ name: 'test-app' }))
+}));
+
+const mockCollection = vi.fn((_db, path) => ({ 
+  id: path, 
+  path: path, 
+  _path: { segments: [path] }
+}));
+const mockDoc = vi.fn();
+const mockAddDoc = vi.fn();
+const mockUpdateDoc = vi.fn();
+const mockDeleteDoc = vi.fn();
+const mockGetDocs = vi.fn(() => Promise.resolve({ docs: [] }));
+
+vi.mock('firebase/firestore', () => ({
+  getFirestore: vi.fn(() => ({ type: 'firestore' })),
+  collection: mockCollection,
+  doc: mockDoc,
+  addDoc: mockAddDoc,
+  updateDoc: mockUpdateDoc,
+  deleteDoc: mockDeleteDoc,
+  getDocs: mockGetDocs,
+  serverTimestamp: vi.fn(),
+  onSnapshot: vi.fn(),
+  query: vi.fn(),
+  orderBy: vi.fn(),
+  setDoc: vi.fn(),
+  getDoc: vi.fn()
+}));
+
+vi.mock('firebase/auth', () => ({
+  getAuth: vi.fn(() => ({ currentUser: null }))
+}));
+
+vi.mock('firebase/storage', () => ({
+  getStorage: vi.fn(() => ({ app: { name: 'test-app' } }))
+}));
+
+// Mock Firebase config - must include db export
 vi.mock('../config/firebase', () => ({
   default: {
     apiKey: 'test-api-key',
@@ -9,22 +49,10 @@ vi.mock('../config/firebase', () => ({
     storageBucket: 'test.appspot.com',
     messagingSenderId: '123456789',
     appId: 'test-app-id'
-  }
-}));
-
-// Mock Firebase SDK
-vi.mock('firebase/app', () => ({
-  initializeApp: vi.fn(() => ({ name: 'test-app' }))
-}));
-
-vi.mock('firebase/firestore', () => ({
-  getFirestore: vi.fn(() => ({ type: 'firestore' })),
-  collection: vi.fn(),
-  doc: vi.fn(),
-  addDoc: vi.fn(),
-  updateDoc: vi.fn(),
-  deleteDoc: vi.fn(),
-  getDocs: vi.fn()
+  },
+  db: { type: 'firestore' },
+  auth: { currentUser: null },
+  storage: { app: { name: 'test-app' } }
 }));
 
 describe('Firebase Integration Tests', () => {
@@ -33,8 +61,8 @@ describe('Firebase Integration Tests', () => {
       // Import the mocked config
       const firebaseConfig = (await import('../config/firebase')).default;
       expect(firebaseConfig).toBeDefined();
-      expect(firebaseConfig.apiKey).toBeDefined();
-      expect(firebaseConfig.projectId).toBeDefined();
+      expect(firebaseConfig).toHaveProperty('apiKey');
+      expect(firebaseConfig).toHaveProperty('projectId');
     });
 
     it('should initialize Firebase app', async () => {
@@ -69,16 +97,19 @@ describe('Firebase Integration Tests', () => {
       const { getFirestore, collection, addDoc } = await import('firebase/firestore');
       
       const db = getFirestore();
-      const mockCollection = collection(db, 'test');
+      const testCollection = collection(db, 'test');
       
       expect(db).toBeDefined();
-      expect(mockCollection).toBeDefined();
+      expect(testCollection).toBeDefined();
       expect(addDoc).toBeDefined();
       
       // Test that our mocks are working
       expect(typeof getFirestore).toBe('function');
       expect(typeof collection).toBe('function');
       expect(typeof addDoc).toBe('function');
+      
+      // Verify the mock collection function was called
+      expect(mockCollection).toHaveBeenCalledWith(db, 'test');
     });
   });
 });

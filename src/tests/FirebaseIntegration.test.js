@@ -4,17 +4,18 @@
  * These tests verify that the main BOM Manager app integrates properly with Firebase
  */
 
-const { render, screen, fireEvent, waitFor } = require('@testing-library/react');
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 // Temporarily disabled - Firebase integration in development
 describe('BOM Manager Firebase Integration', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     
     // Mock localStorage for initial state
-    Storage.prototype.getItem = jest.fn(() => null);
-    Storage.prototype.setItem = jest.fn();
-    Storage.prototype.removeItem = jest.fn();
+    Storage.prototype.getItem = vi.fn(() => null);
+    Storage.prototype.setItem = vi.fn();
+    Storage.prototype.removeItem = vi.fn();
   });
 
   describe('Loading BOMs from Firebase', () => {
