@@ -1879,7 +1879,7 @@ const Header = ({
             <div className="flex items-center space-x-3">
               {/* Cannasol Logo */}
               <img 
-                src="/src/smallicon.png" 
+                src="/SmallIcon.png" 
                 alt="Cannasol Technologies" 
                 className="w-12 h-12 rounded-lg shadow-md"
               />
