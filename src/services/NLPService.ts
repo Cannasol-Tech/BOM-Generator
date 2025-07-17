@@ -1,5 +1,6 @@
-
 // NLP Service for AI-Powered Component Recognition
+import DigikeyService from './DigikeyService';
+
 const NLPService = {
   // Component patterns for intelligent parsing
   componentPatterns: {
@@ -27,7 +28,7 @@ const NLPService = {
     'Cable': ['cable', 'wire', 'harness', 'ribbon']
   },
 
-  parseNaturalLanguage: (input: string, existingCategories: string[] = [], existingSuppliers: string[] = []) => {
+  parseNaturalLanguage: async (input: string, existingCategories: string[] = [], existingSuppliers: string[] = []) => {
     const text = input.toLowerCase().trim();
     
     // Extract quantity if mentioned
@@ -36,7 +37,7 @@ const NLPService = {
 
     // Extract cost if mentioned
     const costMatch = text.match(/\$(\d+(?:\.\d{2})?)|(\d+(?:\.\d{2})?)\s*dollars?/i);
-    const unitCost = costMatch ? parseFloat(costMatch[1] || costMatch[2]) || 0 : 0;
+    let unitCost = costMatch ? parseFloat(costMatch[1] || costMatch[2]) || 0 : 0;
 
     // Determine category based on patterns and keywords
     let category = 'Other';
@@ -105,6 +106,45 @@ const NLPService = {
     // Generate enhanced description
     const description = NLPService.generateDescription(input, specifications);
 
+    // Try to get DigiKey pricing if no cost was specified and it looks like an electronic component
+    let digikeyPN = '';
+    let manufacturerPN = '';
+    
+    if (unitCost === 0 && (supplier === 'DigiKey' || ['IC', 'Resistor', 'Capacitor', 'Inductor', 'Diode', 'Transistor'].includes(category))) {
+      console.log('🔍 Attempting to fetch DigiKey pricing for:', description);
+      
+      // Try to extract part number from input
+      const extractedPN = DigikeyService.extractDigikeyPartNumber(input);
+      if (extractedPN) {
+        try {
+          const pricing = await DigikeyService.searchDigikeyPart(extractedPN, description);
+          if (pricing) {
+            unitCost = pricing.unitPrice;
+            digikeyPN = pricing.digikeyPN;
+            manufacturerPN = pricing.manufacturerPN;
+            supplier = 'DigiKey';
+            console.log('✅ Found DigiKey pricing:', pricing);
+          }
+        } catch (error) {
+          console.warn('⚠️ DigiKey pricing lookup failed:', error);
+        }
+      } else {
+        // If no part number found, try searching by description
+        try {
+          const pricing = await DigikeyService.searchDigikeyPart('', description);
+          if (pricing) {
+            unitCost = pricing.unitPrice;
+            digikeyPN = pricing.digikeyPN;
+            manufacturerPN = pricing.manufacturerPN;
+            supplier = 'DigiKey';
+            console.log('✅ Found DigiKey pricing by description:', pricing);
+          }
+        } catch (error) {
+          console.warn('⚠️ DigiKey pricing lookup by description failed:', error);
+        }
+      }
+    }
+
     return {
       description,
       category,
@@ -112,9 +152,82 @@ const NLPService = {
       unitCost,
       supplier,
       specifications,
+      digikeyPN,
+      manufacturerPN,
       confidence: NLPService.calculateConfidence(text, category),
       originalInput: input
     };
+  },
+
+  // Synchronous version for fallback
+  parseNaturalLanguageSync: (input: string, existingCategories: string[] = [], existingSuppliers: string[] = []) => {
+    // This is the original synchronous parsing logic
+    const result = {
+      originalInput: input,
+      description: '',
+      category: 'Other',
+      quantity: 1,
+      unitCost: 0,
+      supplier: '',
+      confidence: 0.5,
+      specifications: {},
+      digikeyPN: '',
+      manufacturerPN: '',
+      digikeyData: null
+    };
+
+    // Extract quantity
+    const qtyMatch = input.match(/(\d+)\s*(?:pieces?|pcs?|qty|quantity|x)?/i);
+    if (qtyMatch) {
+      result.quantity = parseInt(qtyMatch[1]);
+    }
+
+    // Extract cost
+    const costMatch = input.match(/\$?(\d+(?:\.\d{2})?)/);
+    if (costMatch) {
+      result.unitCost = parseFloat(costMatch[1]);
+    }
+
+    // Detect component type and category
+    let detectedCategory = 'Other';
+    let confidence = 0.3;
+
+    for (const [category, pattern] of Object.entries(NLPService.componentPatterns)) {
+      if (pattern.test(input)) {
+        detectedCategory = category.charAt(0).toUpperCase() + category.slice(1);
+        confidence = 0.7;
+        break;
+      }
+    }
+
+    // Check against existing categories
+    const matchingCategory = existingCategories.find(cat => 
+      input.toLowerCase().includes(cat.toLowerCase())
+    );
+    if (matchingCategory) {
+      detectedCategory = matchingCategory;
+      confidence = Math.max(confidence, 0.6);
+    }
+
+    result.category = detectedCategory;
+    result.confidence = confidence;
+    result.description = input.trim();
+
+    // Extract supplier
+    const supplierMatch = input.match(/(?:from|supplier|vendor)\s+(\w+)/i);
+    if (supplierMatch) {
+      result.supplier = supplierMatch[1];
+    } else {
+      // Check against existing suppliers
+      const matchingSupplier = existingSuppliers.find(sup => 
+        input.toLowerCase().includes(sup.toLowerCase())
+      );
+      if (matchingSupplier) {
+        result.supplier = matchingSupplier;
+      }
+    }
+
+    return result;
   },
 
   getCategoryFromType: (type: string) => {

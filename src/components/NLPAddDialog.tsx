@@ -25,7 +25,7 @@ const NLPAddDialog = ({
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  const handleInputChange = (input: string) => {
+  const handleInputChange = async (input: string) => {
     setNlpInput(input);
     
     if (input.trim()) {
@@ -33,11 +33,20 @@ const NLPAddDialog = ({
       const existingCategories = [...new Set(bomData.map((item: any) => item.category).filter(Boolean))];
       const existingSuppliers = [...new Set(bomData.map((item: any) => item.supplier).filter(Boolean))];
       
-      // Parse the natural language input with context
-      const parsed: any = NLPService.parseNaturalLanguage(input, existingCategories, existingSuppliers);
-      parsed.partNumber = PartNumberService.generatePartNumber(parsed.category, existingPartNumbers);
-      parsed.extendedCost = parsed.quantity * parsed.unitCost;
-      setParsedData(parsed);
+      // Parse the natural language input with context and DigiKey integration
+      try {
+        const parsed: any = await NLPService.parseNaturalLanguage(input, existingCategories, existingSuppliers);
+        parsed.partNumber = PartNumberService.generatePartNumber(parsed.category, existingPartNumbers);
+        parsed.extendedCost = parsed.quantity * parsed.unitCost;
+        setParsedData(parsed);
+      } catch (error) {
+        console.error('Error parsing natural language input:', error);
+        // Fallback to basic parsing without DigiKey integration
+        const parsed: any = NLPService.parseNaturalLanguageSync(input, existingCategories, existingSuppliers);
+        parsed.partNumber = PartNumberService.generatePartNumber(parsed.category, existingPartNumbers);
+        parsed.extendedCost = parsed.quantity * parsed.unitCost;
+        setParsedData(parsed);
+      }
 
       // Generate suggestions from existing inventory
       const suggestions = NLPService.generateSearchSuggestions(input, inventory);
@@ -159,6 +168,11 @@ const NLPAddDialog = ({
                   <span className="text-xs text-gray-600">
                     {Math.round(parsedData.confidence * 100)}% confidence
                   </span>
+                  {parsedData.digikeyData && (
+                    <Badge variant="success" className="text-xs">
+                      DigiKey Verified
+                    </Badge>
+                  )}
                 </div>
               </div>
 
@@ -179,7 +193,10 @@ const NLPAddDialog = ({
                     </div>
                     <div>
                       <span className="font-medium text-gray-700">Unit Cost:</span>
-                      <div>${parsedData.unitCost.toFixed(2)}</div>
+                      <div className={parsedData.digikeyData ? 'text-green-600 font-semibold' : ''}>
+                        ${parsedData.unitCost.toFixed(2)}
+                        {parsedData.digikeyData && <span className="text-xs ml-1">(DigiKey)</span>}
+                      </div>
                     </div>
                   </div>
                   
@@ -191,7 +208,31 @@ const NLPAddDialog = ({
                   {parsedData.supplier && (
                     <div>
                       <span className="font-medium text-gray-700">Supplier:</span>
-                      <div className="text-sm text-gray-900">{parsedData.supplier}</div>
+                      <div className="text-sm text-gray-900 flex items-center">
+                        {parsedData.supplier}
+                        {parsedData.digikeyData && (
+                          <Badge variant="success" className="ml-2">
+                            Live Data
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {parsedData.digikeyData && (
+                    <div className="bg-green-50 p-3 rounded-lg border border-green-200">
+                      <h5 className="font-medium text-green-800 mb-2">DigiKey Information</h5>
+                      <div className="text-sm text-green-700 space-y-1">
+                        <div>Stock: {parsedData.digikeyData.quantityAvailable || 'N/A'}</div>
+                        <div>Lead Time: {parsedData.digikeyData.leadTime || 'N/A'}</div>
+                        {parsedData.digikeyData.datasheet && (
+                          <div>
+                            <a href={parsedData.digikeyData.datasheet} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                              View Datasheet
+                            </a>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
 
