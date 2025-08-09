@@ -65,3 +65,4 @@ jspm_packages/
 **/serviceAccount.json
 **/serviceAccountKey.json
 **/*service-account*.json
+.azure

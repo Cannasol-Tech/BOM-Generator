@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+
+name: cannasol-bom-generator
+metadata:
+    template: azd-init@1.18.0
+services:
+    bom-generator:
+        project: .
+        host: staticwebapp
+        language: js
+        dist: dist
+resources:
+    bom-generator:
+        type: host.staticwebapp
