@@ -2,11 +2,18 @@ import React, { useState, useEffect, useRef } from 'react';
 // @ts-ignore - EasyEDAService is a JavaScript file without type declarations
 import EasyEDAService from './services/EasyEDAService.js';
 import { HybridFirebaseBOMService } from './services/HybridFirebaseBOMService';
-import { N8NWebhookService } from './services/N8NWebhookService';
 import ImportService from './services/ImportService';
 import PartNumberService from './services/partNumberService';
 import NLPService from './services/NLPService';
 import DigikeyService from './services/DigikeyService';
+// Import Firebase test functions for console testing
+import './firebase-test.js';
+// Import UI components
+import Card from './components/ui/Card';
+import Button from './components/ui/Button';
+import Badge from './components/ui/Badge';
+import BOMManagementDialog from './components/BOMManagementDialog';
+import NLPAddDialog from './components/NLPAddDialog';
 import { 
   Plus, 
   Download, 
@@ -316,849 +323,7 @@ const BOMStorage = {
 };
 
 
-// Utility Components
-const Card = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => (
-  <div className={`bg-white rounded-lg shadow-md border border-gray-100 ${className}`}>
-    {children}
-  </div>
-);
-
-const Button = ({ 
-  children, 
-  variant = 'primary', 
-  size = 'md', 
-  onClick, 
-  className = '', 
-  disabled = false 
-}: {
-  children: React.ReactNode;
-  variant?: 'primary' | 'secondary' | 'outline' | 'danger' | 'success';
-  size?: 'sm' | 'md' | 'lg';
-  onClick?: () => void;
-  className?: string;
-  disabled?: boolean;
-}) => {
-  const baseClasses = 'font-medium rounded-md transition-colors duration-200 inline-flex items-center gap-2 border';
-  const variants: { [key: string]: string } = {
-    primary: 'bg-gray-900 hover:bg-gray-800 text-white border-gray-900',
-    secondary: 'bg-white hover:bg-gray-50 text-gray-900 border-gray-300',
-    outline: 'bg-white hover:bg-gray-50 text-gray-700 border-gray-300',
-    danger: 'bg-red-600 hover:bg-red-700 text-white border-red-600',
-    success: 'bg-green-600 hover:bg-green-700 text-white border-green-600'
-  };
-  const sizes: { [key: string]: string } = {
-    sm: 'px-3 py-1.5 text-sm',
-    md: 'px-4 py-2 text-sm',
-    lg: 'px-6 py-3 text-base'
-  };
-  
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={`${baseClasses} ${variants[variant]} ${sizes[size]} ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}
-    >
-      {children}
-    </button>
-  );
-};
-
-const Badge = ({ 
-  children, 
-  variant = 'default', 
-  className = '' 
-}: {
-  children: React.ReactNode;
-  variant?: 'default' | 'success' | 'warning' | 'error' | 'info';
-  className?: string;
-}) => {
-  const variants: { [key: string]: string } = {
-    default: 'bg-gray-100 text-gray-800',
-    success: 'bg-green-100 text-green-800',
-    warning: 'bg-yellow-100 text-yellow-800',
-    error: 'bg-red-100 text-red-800',
-    info: 'bg-blue-100 text-blue-800'
-  };
-  
-  return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${variants[variant]} ${className}`}>
-      {children}
-    </span>
-  );
-};
-
-// BOM Management Dialog Component
-const BOMManagementDialog = ({ 
-  isOpen, 
-  onClose, 
-  onLoadBOM, 
-  onSaveBOM, 
-  currentBOMId, 
-  currentBOMData 
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  onLoadBOM: (bomId: string) => void;
-  onSaveBOM: (name: string, description: string) => void;
-  currentBOMId: string | null;
-  currentBOMData: BOMItem[];
-}) => {
-  const [namedBOMs, setNamedBOMs] = useState<NamedBOM[]>([]);
-  const [showSaveDialog, setShowSaveDialog] = useState(false);
-  const [showRenameDialog, setShowRenameDialog] = useState(false);
-  const [renamingBOM, setRenamingBOM] = useState<NamedBOM | null>(null);
-  const [saveName, setSaveName] = useState('');
-  const [saveDescription, setSaveDescription] = useState('');
-  const [sortBy, setSortBy] = useState<'name' | 'date' | 'cost'>('date');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-
-  useEffect(() => {
-    if (isOpen) {
-      refreshBOMList();
-    }
-  }, [isOpen]);
-
-  const refreshBOMList = () => {
-    const boms = BOMStorage.getNamedBOMs();
-    console.log('🗂️ Refreshing BOM list, found', boms.length, 'BOMs:', boms);
-    setNamedBOMs(boms);
-  };
-
-  const handleSaveBOM = () => {
-    if (!saveName.trim()) {
-      alert('Please enter a name for your BOM');
-      return;
-    }
-
-    // Check for duplicate names
-    const existingBOM = namedBOMs.find(bom => 
-      bom.name.toLowerCase() === saveName.trim().toLowerCase()
-    );
-    
-    if (existingBOM) {
-      if (!confirm('A BOM with this name already exists. Do you want to overwrite it?')) {
-        return;
-      }
-      // Delete the existing BOM
-      BOMStorage.deleteNamedBOM(existingBOM.id);
-    }
-
-    try {
-      const bomId = BOMStorage.saveNamedBOM(saveName, saveDescription, currentBOMData);
-      console.log('✅ BOM saved in dialog with ID:', bomId);
-      
-      onSaveBOM(saveName, saveDescription);
-      setSaveName('');
-      setSaveDescription('');
-      setShowSaveDialog(false);
-      refreshBOMList();
-      
-      // Show success message
-      const toast = document.createElement('div');
-      toast.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-50';
-      toast.textContent = `BOM "${saveName}" saved successfully!`;
-      document.body.appendChild(toast);
-      setTimeout(() => document.body.removeChild(toast), 3000);
-    } catch (error) {
-      console.error('❌ Dialog save error:', error);
-      alert('Failed to save BOM: ' + (error instanceof Error ? error.message : 'Unknown error'));
-    }
-  };
-
-  const handleRenameBOM = () => {
-    if (!renamingBOM || !saveName.trim()) {
-      alert('Please enter a valid name');
-      return;
-    }
-
-    try {
-      BOMStorage.renameNamedBOM(renamingBOM.id, saveName, saveDescription);
-      setSaveName('');
-      setSaveDescription('');
-      setShowRenameDialog(false);
-      setRenamingBOM(null);
-      refreshBOMList();
-    } catch (error) {
-      alert('Failed to rename BOM: ' + (error instanceof Error ? error.message : 'Unknown error'));
-    }
-  };
-
-  const handleDeleteBOM = (bom: NamedBOM) => {
-    if (!confirm(`Are you sure you want to delete "${bom.name}"? This action cannot be undone.`)) {
-      return;
-    }
-
-    try {
-      BOMStorage.deleteNamedBOM(bom.id);
-      refreshBOMList();
-      
-      // Show success message
-      const toast = document.createElement('div');
-      toast.className = 'fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg z-50';
-      toast.textContent = `BOM "${bom.name}" deleted successfully!`;
-      document.body.appendChild(toast);
-      setTimeout(() => document.body.removeChild(toast), 3000);
-    } catch (error) {
-      alert('Failed to delete BOM: ' + (error instanceof Error ? error.message : 'Unknown error'));
-    }
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount);
-  };
-
-  const sortedBOMs = [...namedBOMs].sort((a, b) => {
-    let comparison = 0;
-    
-    switch (sortBy) {
-      case 'name':
-        comparison = a.name.localeCompare(b.name);
-        break;
-      case 'date':
-        comparison = new Date(a.lastModified).getTime() - new Date(b.lastModified).getTime();
-        break;
-      case 'cost':
-        comparison = a.totalCost - b.totalCost;
-        break;
-    }
-    
-    return sortOrder === 'asc' ? comparison : -comparison;
-  });
-
-  const openRenameDialog = (bom: NamedBOM) => {
-    setRenamingBOM(bom);
-    setSaveName(bom.name);
-    setSaveDescription(bom.description);
-    setShowRenameDialog(true);
-  };
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <Card className="w-full max-w-6xl mx-4 p-6 max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center mb-6">
-          <div className="flex items-center space-x-3">
-            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-              <FolderOpen className="text-blue-600" size={24} />
-            </div>
-            <div>
-              <h3 className="text-xl font-semibold">BOM Management</h3>
-              <p className="text-sm text-gray-600">Save, load, and manage your BOMs</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-1 text-gray-500 hover:text-gray-700">
-            <X size={20} />
-          </button>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center space-x-4">
-            <Button 
-              onClick={() => setShowSaveDialog(true)}
-              variant="primary"
-              disabled={currentBOMData.length === 0}
-            >
-              <Save size={16} />
-              Save Current BOM
-            </Button>
-            
-            <div className="flex items-center space-x-2">
-              <span className="text-sm text-gray-600">Sort by:</span>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as 'name' | 'date' | 'cost')}
-                className="text-sm border border-gray-300 rounded px-2 py-1"
-              >
-                <option value="date">Last Modified</option>
-                <option value="name">Name</option>
-                <option value="cost">Total Cost</option>
-              </select>
-              <button
-                onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-                className="p-1 text-gray-500 hover:text-gray-700"
-              >
-                {sortOrder === 'asc' ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-              </button>
-            </div>
-          </div>
-
-          <div className="text-sm text-gray-600">
-            {namedBOMs.length} saved BOM{namedBOMs.length !== 1 ? 's' : ''}
-          </div>
-        </div>
-
-        {/* BOM List */}
-        {namedBOMs.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <FolderOpen className="text-gray-400" size={32} />
-            </div>
-            <h4 className="text-lg font-semibold text-gray-900 mb-2">No Saved BOMs</h4>
-            <p className="text-gray-600 mb-4">Create your first named BOM by saving your current work.</p>
-            <Button 
-              onClick={() => setShowSaveDialog(true)}
-              disabled={currentBOMData.length === 0}
-            >
-              <Save size={16} />
-              Save Current BOM
-            </Button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-            {sortedBOMs.map((bom) => (
-              <Card key={bom.id} className={`p-4 hover:shadow-lg transition-shadow ${
-                currentBOMId === bom.id ? 'ring-2 ring-blue-500 bg-blue-50' : ''
-              }`}>
-                <div className="flex justify-between items-start mb-3">
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-semibold text-gray-900 truncate">{bom.name}</h4>
-                    {bom.description && (
-                      <p className="text-sm text-gray-600 line-clamp-2 mt-1">{bom.description}</p>
-                    )}
-                  </div>
-                  {currentBOMId === bom.id && (
-                    <Badge variant="info" className="ml-2 flex-shrink-0">
-                      Current
-                    </Badge>
-                  )}
-                </div>
-
-                <div className="space-y-2 text-sm text-gray-600 mb-4">
-                  <div className="flex justify-between">
-                    <span>Items:</span>
-                    <span className="font-medium">{bom.totalItems}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Total Cost:</span>
-                    <span className="font-medium text-green-600">{formatCurrency(bom.totalCost)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Modified:</span>
-                    <span className="font-medium">{formatDate(bom.lastModified)}</span>
-                  </div>
-                </div>
-
-                <div className="flex space-x-2">
-                  <Button
-                    size="sm"
-                    variant={currentBOMId === bom.id ? "secondary" : "primary"}
-                    onClick={() => onLoadBOM(bom.id)}
-                    disabled={currentBOMId === bom.id}
-                    className="flex-1"
-                  >
-                    {currentBOMId === bom.id ? (
-                      <>
-                        <CheckCircle size={14} />
-                        Loaded
-                      </>
-                    ) : (
-                      <>
-                        <FolderOpen size={14} />
-                        Load
-                      </>
-                    )}
-                  </Button>
-                  
-                  <button
-                    onClick={() => openRenameDialog(bom)}
-                    className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded"
-                    title="Rename BOM"
-                  >
-                    <Edit2 size={14} />
-                  </button>
-                  
-                  <button
-                    onClick={() => handleDeleteBOM(bom)}
-                    className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded"
-                    title="Delete BOM"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </Card>
-            ))}
-          </div>
-        )}
-
-        {/* Save Dialog */}
-        {showSaveDialog && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-60">
-            <Card className="w-full max-w-md mx-4 p-6">
-              <h4 className="text-lg font-semibold mb-4">Save BOM</h4>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    BOM Name *
-                  </label>
-                  <input
-                    type="text"
-                    value={saveName}
-                    onChange={(e) => setSaveName(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="e.g., Production BOM v1.0"
-                    maxLength={50}
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Description
-                  </label>
-                  <textarea
-                    value={saveDescription}
-                    onChange={(e) => setSaveDescription(e.target.value)}
-                    rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Optional description..."
-                    maxLength={200}
-                  />
-                </div>
-                
-                <div className="text-sm text-gray-600">
-                  This BOM contains {currentBOMData.length} items with a total cost of {formatCurrency(
-                    currentBOMData.reduce((sum, item) => sum + item.extendedCost, 0)
-                  )}.
-                </div>
-              </div>
-
-              <div className="flex justify-end space-x-3 mt-6">
-                <Button 
-                  variant="outline" 
-                  onClick={() => {
-                    setShowSaveDialog(false);
-                    setSaveName('');
-                    setSaveDescription('');
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button onClick={handleSaveBOM} disabled={!saveName.trim()}>
-                  <Save size={16} />
-                  Save BOM
-                </Button>
-              </div>
-            </Card>
-          </div>
-        )}
-
-        {/* Rename Dialog */}
-        {showRenameDialog && renamingBOM && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-60">
-            <Card className="w-full max-w-md mx-4 p-6">
-              <h4 className="text-lg font-semibold mb-4">Rename BOM</h4>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    BOM Name *
-                  </label>
-                  <input
-                    type="text"
-                    value={saveName}
-                    onChange={(e) => setSaveName(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="e.g., Production BOM v1.0"
-                    maxLength={50}
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Description
-                  </label>
-                  <textarea
-                    value={saveDescription}
-                    onChange={(e) => setSaveDescription(e.target.value)}
-                    rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Optional description..."
-                    maxLength={200}
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end space-x-3 mt-6">
-                <Button 
-                  variant="outline" 
-                  onClick={() => {
-                    setShowRenameDialog(false);
-                    setRenamingBOM(null);
-                    setSaveName('');
-                    setSaveDescription('');
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button onClick={handleRenameBOM} disabled={!saveName.trim()}>
-                  <Edit2 size={16} />
-                  Rename
-                </Button>
-              </div>
-            </Card>
-          </div>
-        )}
-      </Card>
-    </div>
-  );
-};
-
-// NLP Add Component Dialog
-const NLPAddDialog = ({ 
-  isOpen, 
-  onClose, 
-  onAdd, 
-  existingPartNumbers, 
-  inventory, 
-  bomData 
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  onAdd: (items: any[]) => void;
-  existingPartNumbers: string[];
-  inventory: any[];
-  bomData: any[];
-}) => {
-  const [nlpInput, setNlpInput] = useState('');
-  const [parsedData, setParsedData] = useState<any>(null);
-  const [suggestions, setSuggestions] = useState<any[]>([]);
-  const [showAdvanced, setShowAdvanced] = useState(false);
-
-  const handleInputChange = (input: string) => {
-    setNlpInput(input);
-    
-    if (input.trim()) {
-      // Get existing categories and suppliers for smarter parsing
-      const existingCategories = [...new Set(bomData.map((item: any) => item.category).filter(Boolean))];
-      const existingSuppliers = [...new Set(bomData.map((item: any) => item.supplier).filter(Boolean))];
-      
-      // Parse the natural language input with context
-      const parsed: any = NLPService.parseNaturalLanguage(input, existingCategories, existingSuppliers);
-      parsed.partNumber = PartNumberService.generatePartNumber(parsed.category, existingPartNumbers);
-      parsed.extendedCost = parsed.quantity * parsed.unitCost;
-      setParsedData(parsed);
-
-      // Generate suggestions from existing inventory
-      const suggestions = NLPService.generateSearchSuggestions(input, inventory);
-      setSuggestions(suggestions);
-    } else {
-      setParsedData(null);
-      setSuggestions([]);
-    }
-  };
-
-  const handleAddParsed = () => {
-    if (!parsedData) return;
-
-    const newItem = {
-      id: Date.now(),
-      partNumber: parsedData.partNumber,
-      description: parsedData.description,
-      category: parsedData.category,
-      quantity: parsedData.quantity,
-      unit: 'EA',
-      unitCost: parsedData.unitCost,
-      extendedCost: parsedData.extendedCost,
-      supplier: parsedData.supplier,
-      leadTime: 1,
-      revision: 'A',
-      status: 'Active',
-      requiredFor: 'Base System',
-      digikeyPN: '',
-      manufacturerPN: '',
-      nlpParsed: true,
-      confidence: parsedData.confidence,
-      originalInput: parsedData.originalInput
-    };
-
-    onAdd([newItem]);
-    setNlpInput('');
-    setParsedData(null);
-    setSuggestions([]);
-    onClose();
-  };
-
-  const handleAddSuggestion = (suggestion: any) => {
-    const newItem = {
-      id: Date.now(),
-      partNumber: PartNumberService.generatePartNumber(suggestion.category, existingPartNumbers),
-      description: `${suggestion.description} (from inventory)`,
-      category: suggestion.category,
-      quantity: 1,
-      unit: suggestion.unit,
-      unitCost: suggestion.unitCost,
-      extendedCost: suggestion.unitCost,
-      supplier: suggestion.supplier,
-      leadTime: suggestion.leadTime,
-      revision: 'A',
-      status: 'Active',
-      requiredFor: 'Base System',
-      digikeyPN: suggestion.digikeyPN,
-      manufacturerPN: suggestion.manufacturerPN,
-      fromInventory: true
-    };
-
-    onAdd([newItem]);
-    setNlpInput('');
-    setParsedData(null);
-    setSuggestions([]);
-    onClose();
-  };
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <Card className="w-full max-w-5xl mx-4 p-6 max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center mb-6">
-          <div className="flex items-center space-x-3">
-            <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-              <span className="text-2xl">🤖</span>
-            </div>
-            <div>
-              <h3 className="text-xl font-semibold">Natural Language Component Add</h3>
-              <p className="text-sm text-gray-600">Describe your component in natural language</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-1 text-gray-500 hover:text-gray-700">
-            <X size={20} />
-          </button>
-        </div>
-
-        {/* Natural Language Input */}
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Describe Your Component
-          </label>
-          <div className="relative">
-            <textarea
-              value={nlpInput}
-              onChange={(e) => handleInputChange(e.target.value)}
-              rows={3}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 resize-none"
-              placeholder="Examples:&#10;• 10k ohm resistor 1% 1/4W from DigiKey&#10;• STM32F407 microcontroller for automation&#10;• 100nF ceramic capacitor 50V&#10;• Primary processing tank stainless steel 316L&#10;• 5 pieces of M3x10 socket head screws"
-            />
-            <div className="absolute bottom-2 right-2 text-xs text-gray-400">
-              NLP Parsing {nlpInput ? '🟢' : '⚫'}
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Parsed Result */}
-          {parsedData && (
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <h4 className="font-semibold">Parsed Result</h4>
-                <div className="flex items-center space-x-2">
-                  <div className={`w-2 h-2 rounded-full ${
-                    parsedData.confidence > 0.7 ? 'bg-green-500' : 
-                    parsedData.confidence > 0.4 ? 'bg-yellow-500' : 'bg-red-500'
-                  }`}></div>
-                  <span className="text-xs text-gray-600">
-                    {Math.round(parsedData.confidence * 100)}% confidence
-                  </span>
-                </div>
-              </div>
-
-              <Card className="p-4 bg-purple-50 border-purple-200">
-                <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <span className="font-medium text-gray-700">Part Number:</span>
-                      <div className="font-mono text-purple-700">{parsedData.partNumber}</div>
-                    </div>
-                    <div>
-                      <span className="font-medium text-gray-700">Category:</span>
-                      <div><Badge variant="info">{parsedData.category}</Badge></div>
-                    </div>
-                    <div>
-                      <span className="font-medium text-gray-700">Quantity:</span>
-                      <div>{parsedData.quantity}</div>
-                    </div>
-                    <div>
-                      <span className="font-medium text-gray-700">Unit Cost:</span>
-                      <div>${parsedData.unitCost.toFixed(2)}</div>
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <span className="font-medium text-gray-700">Description:</span>
-                    <div className="text-sm text-gray-900 mt-1">{parsedData.description}</div>
-                  </div>
-
-                  {parsedData.supplier && (
-                    <div>
-                      <span className="font-medium text-gray-700">Supplier:</span>
-                      <div className="text-sm text-gray-900">{parsedData.supplier}</div>
-                    </div>
-                  )}
-
-                  {Object.keys(parsedData.specifications).length > 0 && (
-                    <div>
-                      <span className="font-medium text-gray-700">Specifications:</span>
-                      <div className="text-sm text-gray-900 mt-1">
-                        {Object.entries(parsedData.specifications).map(([key, value]) => (
-                          <span key={key} className="inline-block bg-gray-100 px-2 py-1 rounded text-xs mr-2 mb-1">
-                            {key}: {String(value)}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="pt-2 border-t border-purple-200">
-                    <div className="flex justify-between items-center">
-                      <span className="font-semibold text-purple-800">
-                        Total: ${parsedData.extendedCost.toFixed(2)}
-                      </span>
-                      <Button variant="success" onClick={handleAddParsed}>
-                        <PlusCircle size={16} />
-                        Add to BOM
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-
-              {/* Advanced Options */}
-              <div className="mt-4">
-                <button
-                  onClick={() => setShowAdvanced(!showAdvanced)}
-                  className="flex items-center space-x-2 text-sm text-gray-600 hover:text-gray-800"
-                >
-                  {showAdvanced ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                  <span>Advanced Options</span>
-                </button>
-                
-                {showAdvanced && (
-                  <div className="mt-2 p-3 bg-gray-50 rounded-lg text-xs">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <span className="font-medium">Original Input:</span>
-                        <div className="text-gray-600 italic">"{parsedData.originalInput}"</div>
-                      </div>
-                      <div>
-                        <span className="font-medium">Features Used:</span>
-                        <div className="text-gray-600">
-                          Pattern matching, keyword analysis, specification extraction
-                        </div>
-                      </div>
-                      <div className="col-span-2">
-                        <span className="font-medium">Learning Context:</span>
-                        <div className="text-gray-600">
-                          Using {[...new Set(bomData.map(item => item.category).filter(Boolean))].length} existing categories and{' '}
-                          {[...new Set(bomData.map(item => item.supplier).filter(Boolean))].length} suppliers for better suggestions
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Inventory Suggestions */}
-          {suggestions.length > 0 && (
-            <div>
-              <h4 className="font-semibold mb-3">Similar Parts from Inventory</h4>
-              <div className="space-y-2 max-h-80 overflow-y-auto">
-                {suggestions.map((suggestion, index) => (
-                  <Card key={index} className="p-3 hover:bg-gray-50 cursor-pointer border border-gray-200">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-2 mb-1">
-                          <span className="font-mono text-xs text-gray-600">{suggestion.partNumber}</span>
-                          <Badge variant="default">{suggestion.category}</Badge>
-                          <div className="text-xs text-green-600">
-                            {Math.round(suggestion.similarity * 100)}% match
-                          </div>
-                        </div>
-                        <div className="text-sm text-gray-900">{suggestion.description}</div>
-                        <div className="text-xs text-gray-500 mt-1">{suggestion.reason}</div>
-                        <div className="text-xs text-gray-600 mt-1">
-                          ${suggestion.unitCost.toFixed(2)} • {suggestion.supplier}
-                        </div>
-                      </div>
-                      <Button 
-                        size="sm" 
-                        variant="outline"
-                        onClick={() => handleAddSuggestion(suggestion)}
-                      >
-                        <Target size={14} />
-                        Use
-                      </Button>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Help and Examples */}
-          {!parsedData && !nlpInput && (
-            <div className="lg:col-span-2">
-              <Card className="p-6 bg-gradient-to-r from-purple-50 to-blue-50">
-                <h4 className="font-semibold mb-4">🚀 Smart Component Recognition</h4>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <h5 className="font-medium mb-2">What the system can understand:</h5>
-                    <ul className="text-sm text-gray-700 space-y-1">
-                      <li>• <strong>Component values:</strong> "10k ohm", "100nF", "1uH"</li>
-                      <li>• <strong>Specifications:</strong> "1% tolerance", "50V rating"</li>
-                      <li>• <strong>Quantities:</strong> "5 pieces", "qty: 10"</li>
-                      <li>• <strong>Suppliers:</strong> "from DigiKey", "McMaster"</li>
-                      <li>• <strong>Costs:</strong> "$2.50 each", "5 dollars"</li>
-                    </ul>
-                  </div>
-                  
-                  <div>
-                    <h5 className="font-medium mb-2">Try these examples:</h5>
-                    <div className="space-y-2">
-                      {[
-                        "STM32F407VGT6 microcontroller $12.50",
-                        "10 pieces 10k ohm resistors 1% from DigiKey",
-                        "Primary stainless steel tank 316L",
-                        "100nF ceramic capacitor 50V X7R",
-                        "M3x10 socket head cap screws qty 20"
-                      ].map((example, index) => (
-                        <button
-                          key={index}
-                          onClick={() => handleInputChange(example)}
-                          className="block w-full text-left text-xs bg-white p-2 rounded border border-gray-200 hover:bg-gray-50 transition-colors"
-                        >
-                          "{example}"
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-
-              </Card>
-            </div>
-          )}
-        </div>
-      </Card>
-    </div>
-  );
-};
+// NLP Add Component Dialog - Now imported from ./components/NLPAddDialog
 const BulkAddDialog = ({ 
   isOpen, 
   onClose, 
@@ -2628,6 +1793,7 @@ const BOMManager = () => {
   const [n8nConnected, setN8nConnected] = useState(false);
   const [isLoadingFirebaseData, setIsLoadingFirebaseData] = useState(false);
 
+
   const [firebaseInventory, setFirebaseInventory] = useState<any[]>([]);
   const [savingToFirebase, setSavingToFirebase] = useState(false);
   
@@ -2644,12 +1810,6 @@ const BOMManager = () => {
   // Initialize services
   const easyEDAService = useRef(new EasyEDAService()).current;
   const firebaseService = useRef(new HybridFirebaseBOMService()).current;
-  const n8nService = useRef(new N8NWebhookService({
-    webhookUrl: import.meta.env.VITE_N8N_WEBHOOK_URL || 'https://your-n8n-instance.com/webhook/bom-save',
-    secret: import.meta.env.VITE_N8N_WEBHOOK_SECRET,
-    timeout: 30000,
-    retryAttempts: 3
-  })).current;
 
   // EasyEDA Integration functions
   const handleEasyEDASearch = async (bomItem: BOMItem) => {
@@ -2733,7 +1893,6 @@ const BOMManager = () => {
   useEffect(() => {
     const initializeServices = async () => {
       try {
-        setIsLoadingFirebaseData(true);
         
         // Initialize Firebase service
         console.log('🔥 Initializing Firebase service...');
@@ -2752,25 +1911,11 @@ const BOMManager = () => {
         setFirebaseConnected(false);
         // Fallback to localStorage
         console.log('📂 Falling back to localStorage data');
-      } finally {
-        setIsLoadingFirebaseData(false);
-      }
-
-      try {
-        // Initialize N8N service
-        console.log('🔗 Initializing N8N webhook service...');
-        await n8nService.initialize();
-        setN8nConnected(true);
-        console.log('✅ N8N webhook service initialized');
-      } catch (error) {
-        console.error('❌ Failed to initialize N8N service:', error);
-        setN8nConnected(false);
-        // N8N is optional, continue without it
       }
     };
 
     initializeServices();
-  }, [firebaseService, n8nService]);
+  }, [firebaseService]);
 
   // Auto-save every 30 seconds
   useEffect(() => {
@@ -2784,78 +1929,114 @@ const BOMManager = () => {
   }, [bomData, currentBOMId]);
 
   const handleSave = async () => {
-    console.log('🔄 Saving BOM...', { currentBOMId, bomDataLength: bomData.length });
+    console.log('🔄 SAVE DEBUG: Starting BOM save operation');
+    console.log('📊 SAVE DEBUG: BOM Data Overview:', {
+      currentBOMId,
+      currentBOMName,
+      bomDataLength: bomData.length,
+      totalCost: bomData.reduce((sum, item) => sum + item.extendedCost, 0),
+      firebaseConnected,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Debug: Log first few items for verification
+    if (bomData.length > 0) {
+      console.log('📋 SAVE DEBUG: First 3 BOM items:', bomData.slice(0, 3).map(item => ({
+        id: item.id,
+        partNumber: item.partNumber,
+        description: item.description,
+        quantity: item.quantity,
+        unitCost: item.unitCost,
+        extendedCost: item.extendedCost,
+        category: item.category,
+        supplier: item.supplier
+      })));
+    }
     
     try {
       setSavingToFirebase(true);
       
       if (currentBOMId) {
+        console.log('🗂️ SAVE DEBUG: Updating existing named BOM with ID:', currentBOMId);
+        
         // Update existing named BOM locally
         const success = BOMStorage.updateNamedBOM(currentBOMId, bomData);
-        console.log('📝 Named BOM update result:', success);
+        console.log('📝 SAVE DEBUG: Named BOM update result:', success);
         
-        if (success) {
-          setLastSaved(new Date());
-          console.log('✅ Named BOM saved locally');
-          
-          // Send update to N8N webhook if connected
-          if (n8nConnected && n8nService.isInitialized()) {
-            try {
-              console.log('🚀 Sending BOM update to N8N...');
-              const namedBOM = BOMStorage.getNamedBOM(currentBOMId);
-              if (namedBOM) {
-                const response = await n8nService.sendBOMUpdate(currentBOMId, {
-                  ...namedBOM,
-                  bomData
-                });
-                
-                if (response.success) {
-                  console.log('✅ BOM update sent to N8N successfully');
-                } else {
-                  console.warn('⚠️ N8N BOM update failed:', response.error);
-                }
-              }
-            } catch (error) {
-              console.error('❌ Failed to send BOM update to N8N:', error);
-            }
+        // Save to Firebase if connected
+        if (firebaseConnected && firebaseService.isInitialized()) {
+          try {
+            console.log('🔥 SAVE DEBUG: Updating BOM in Firebase...');
+            await firebaseService.updateNamedBOM(currentBOMId, bomData);
+            console.log('✅ SAVE DEBUG: BOM updated in Firebase successfully');
+          } catch (error) {
+            console.error('❌ SAVE DEBUG: Failed to update BOM in Firebase:', error);
           }
         }
-      } else {
-        // Legacy save to localStorage
-        const success = BOMStorage.save(bomData);
-        console.log('💾 Legacy save result:', success);
+        
+        // Verify the save by reading it back
+        const savedBOM = BOMStorage.getNamedBOM(currentBOMId);
+        console.log('🔍 SAVE DEBUG: Verification - BOM read back:', {
+          found: !!savedBOM,
+          name: savedBOM?.name,
+          itemCount: savedBOM?.bomData.length,
+          totalCost: savedBOM?.totalCost,
+          lastModified: savedBOM?.lastModified
+        });
         
         if (success) {
           setLastSaved(new Date());
-          console.log('✅ Legacy BOM saved locally');
-          
-          // Send new BOM to N8N webhook if connected
-          if (n8nConnected && n8nService.isInitialized()) {
-            try {
-              console.log('🚀 Sending new BOM to N8N...');
-              const response = await n8nService.sendBOMSave({
-                name: `BOM_${new Date().toISOString().split('T')[0]}`,
-                description: 'BOM generated from Cannasol BOM Generator',
-                bomData,
-                createdAt: new Date().toISOString(),
-                source: 'bom-generator'
-              });
-              
-              if (response.success) {
-                console.log('✅ BOM sent to N8N successfully, ID:', response.bomId);
-              } else {
-                console.warn('⚠️ N8N BOM save failed:', response.error);
-              }
-            } catch (error) {
-              console.error('❌ Failed to send BOM to N8N:', error);
-            }
+          console.log('✅ SAVE DEBUG: Named BOM saved locally successfully');
+        } else {
+          console.error('❌ SAVE DEBUG: Failed to save named BOM locally');
+        }
+      } else {
+        console.log('💾 SAVE DEBUG: No current BOM ID, using legacy save');
+        
+        // Legacy save to localStorage
+        const success = BOMStorage.save(bomData);
+        console.log('💾 SAVE DEBUG: Legacy save result:', success);
+        
+        // Save to Firebase if connected
+        if (firebaseConnected && firebaseService.isInitialized()) {
+          try {
+            console.log('� SAVE DEBUG: Saving legacy BOM to Firebase...');
+            await firebaseService.saveBOM(bomData);
+            console.log('✅ SAVE DEBUG: Legacy BOM saved to Firebase successfully');
+          } catch (error) {
+            console.error('❌ SAVE DEBUG: Failed to save legacy BOM to Firebase:', error);
           }
+        }
+        
+        // Verify the legacy save
+        const savedData = BOMStorage.load();
+        console.log('🔍 SAVE DEBUG: Legacy verification - Data read back:', {
+          itemCount: savedData.length,
+          totalCost: savedData.reduce((sum: number, item: any) => sum + item.extendedCost, 0),
+          firstItem: savedData[0] ? {
+            partNumber: savedData[0].partNumber,
+            description: savedData[0].description
+          } : null
+        });
+        
+        if (success) {
+          setLastSaved(new Date());
+          console.log('✅ SAVE DEBUG: Legacy BOM saved locally successfully');
+        } else {
+          console.error('❌ SAVE DEBUG: Failed to save legacy BOM');
         }
       }
     } catch (error) {
-      console.error('❌ Error during save operation:', error);
+      console.error('❌ SAVE DEBUG: Error during save operation:', error);
+      console.log('🔍 SAVE DEBUG: Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : 'No stack trace',
+        currentBOMId,
+        bomDataLength: bomData.length
+      });
     } finally {
       setSavingToFirebase(false);
+      console.log('🏁 SAVE DEBUG: Save operation completed');
     }
   };
 
@@ -2886,45 +2067,87 @@ const BOMManager = () => {
   };
 
   const handleSaveBOM = async (name: string, description: string) => {
-    console.log('💾 Saving new named BOM:', name, 'with', bomData.length, 'items');
+    console.log('💾 SAVE_BOM DEBUG: Starting named BOM save operation');
+    console.log('📋 SAVE_BOM DEBUG: Input parameters:', {
+      name,
+      description,
+      bomDataLength: bomData.length,
+      currentBOMId,
+      currentBOMName,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Debug: Log BOM data structure
+    console.log('📊 SAVE_BOM DEBUG: BOM data overview:', {
+      totalItems: bomData.length,
+      totalCost: bomData.reduce((sum, item) => sum + item.extendedCost, 0),
+      categories: [...new Set(bomData.map(item => item.category))],
+      suppliers: [...new Set(bomData.map(item => item.supplier))]
+    });
+    
+    // Debug: Log sample items
+    if (bomData.length > 0) {
+      console.log('📋 SAVE_BOM DEBUG: Sample BOM items:', bomData.slice(0, 3).map(item => ({
+        id: item.id,
+        partNumber: item.partNumber,
+        description: item.description,
+        quantity: item.quantity,
+        unitCost: item.unitCost,
+        extendedCost: item.extendedCost
+      })));
+    }
     
     try {
       setSavingToFirebase(true);
       
+      console.log('🔄 SAVE_BOM DEBUG: Calling BOMStorage.saveNamedBOM...');
       const bomId = BOMStorage.saveNamedBOM(name, description, bomData);
-      console.log('✅ Named BOM saved locally with ID:', bomId);
+      console.log('✅ SAVE_BOM DEBUG: Named BOM saved locally with ID:', bomId);
+      
+      // Verify the save
+      const savedBOM = BOMStorage.getNamedBOM(bomId);
+      console.log('🔍 SAVE_BOM DEBUG: Verification - saved BOM:', {
+        found: !!savedBOM,
+        id: savedBOM?.id,
+        name: savedBOM?.name,
+        description: savedBOM?.description,
+        itemCount: savedBOM?.bomData.length,
+        totalCost: savedBOM?.totalCost,
+        createdDate: savedBOM?.createdDate,
+        lastModified: savedBOM?.lastModified
+      });
       
       setCurrentBOMId(bomId);
       setCurrentBOMName(name);
       BOMStorage.setCurrentBOM(bomId);
       setLastSaved(new Date());
       
-      // Send to N8N webhook if connected
-      if (n8nConnected && n8nService.isInitialized()) {
+      console.log('📝 SAVE_BOM DEBUG: State updated successfully');
+      
+      // Save to Firebase if connected
+      if (firebaseConnected && firebaseService.isInitialized()) {
         try {
-          console.log('🚀 Sending new named BOM to N8N...');
-          const response = await n8nService.sendBOMSave({
-            bomId,
-            name,
-            description,
-            bomData,
-            createdAt: new Date().toISOString(),
-            source: 'bom-generator'
-          });
-          
-          if (response.success) {
-            console.log('✅ Named BOM sent to N8N successfully');
-          } else {
-            console.warn('⚠️ N8N named BOM save failed:', response.error);
-          }
+          console.log('� SAVE_BOM DEBUG: Saving named BOM to Firebase...');
+          const firebaseBomId = await firebaseService.saveNamedBOM(name, description, bomData);
+          console.log('✅ SAVE_BOM DEBUG: Named BOM saved to Firebase with ID:', firebaseBomId);
         } catch (error) {
-          console.error('❌ Failed to send named BOM to N8N:', error);
+          console.error('❌ SAVE_BOM DEBUG: Failed to save named BOM to Firebase:', error);
         }
+      } else {
+        console.log('🔌 SAVE_BOM DEBUG: Firebase not connected, skipping cloud save');
       }
     } catch (error) {
-      console.error('❌ Failed to save named BOM:', error);
+      console.error('❌ SAVE_BOM DEBUG: Failed to save named BOM:', error);
+      console.log('🔍 SAVE_BOM DEBUG: Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : 'No stack trace',
+        bomDataLength: bomData.length,
+        name,
+        description
+      });
     } finally {
       setSavingToFirebase(false);
+      console.log('🏁 SAVE_BOM DEBUG: Named BOM save operation completed');
     }
   };
 
@@ -3437,12 +2660,32 @@ const BOMManager = () => {
           </Card>
           <Card className="p-6 bg-green-50">
             <div className="flex items-center space-x-3">
-              <CheckCircle className="text-green-600" size={24} />
+              <Database className="text-green-600" size={24} />
               <div>
-                <p className="text-2xl font-semibold text-green-900">{selectedItems.size}</p>
-                <p className="text-sm text-green-600">Selected</p>
+                <p className="text-2xl font-semibold text-green-900">
+                  {bomData.filter(item => {
+                    const availability = checkInventoryAvailability(item.partNumber);
+                    return availability.available && availability.currentStock >= item.quantity;
+                  }).length}
+                </p>
+                <p className="text-sm text-green-600">In Stock</p>
+                <p className="text-xs text-green-600">
+                  {bomData.filter(item => {
+                    const availability = checkInventoryAvailability(item.partNumber);
+                    return availability.available && availability.currentStock > 0 && availability.currentStock < item.quantity;
+                  }).length} partial
+                </p>
+              </div>
+            </div>
+          </Card>
+          <Card className="p-6 bg-blue-50">
+            <div className="flex items-center space-x-3">
+              <CheckCircle className="text-blue-600" size={24} />
+              <div>
+                <p className="text-2xl font-semibold text-blue-900">{selectedItems.size}</p>
+                <p className="text-sm text-blue-600">Selected</p>
                 {selectedItems.size > 0 && (
-                  <p className="text-xs text-green-600">${selectedCost.toFixed(2)}</p>
+                  <p className="text-xs text-blue-600">${selectedCost.toFixed(2)}</p>
                 )}
               </div>
             </div>
@@ -3533,6 +2776,7 @@ const BOMManager = () => {
                   <th className="px-3 py-2 text-left text-sm font-semibold text-gray-900">Description</th>
                   <th className="px-3 py-2 text-left text-sm font-semibold text-gray-900">Category</th>
                   <th className="px-3 py-2 text-right text-sm font-semibold text-gray-900">Qty</th>
+                  <th className="px-3 py-2 text-right text-sm font-semibold text-gray-900">Stock</th>
                   <th className="px-3 py-2 text-right text-sm font-semibold text-gray-900">Unit Cost</th>
                   <th className="px-3 py-2 text-right text-sm font-semibold text-gray-900">Total</th>
                   <th className="px-3 py-2 text-left text-sm font-semibold text-gray-900">Supplier</th>
@@ -3556,7 +2800,16 @@ const BOMManager = () => {
                       />
                     </td>
                     <td className="px-3 py-1 text-xs font-mono font-medium text-gray-900 leading-tight">
-                      {renderEditableCell(item, 'partNumber', item.partNumber)}
+                      <div>
+                        {renderEditableCell(item, 'partNumber', item.partNumber)}
+                        {item.fromInventory && (
+                          <div className="mt-0.5">
+                            <Badge className="bg-green-100 text-green-800 text-xs py-0 px-1">
+                              From Inventory
+                            </Badge>
+                          </div>
+                        )}
+                      </div>
                     </td>
                     <td className="px-3 py-1 text-xs text-gray-900 leading-tight">
                       <div>
@@ -3574,6 +2827,37 @@ const BOMManager = () => {
                     </td>
                     <td className="px-3 py-1 text-xs text-right text-gray-900 leading-tight">
                       {renderEditableCell(item, 'quantity', item.quantity, 'text-right')}
+                    </td>
+                    <td className="px-3 py-1 text-xs text-right text-gray-900 leading-tight">
+                      {(() => {
+                        const availability = checkInventoryAvailability(item.partNumber);
+                        if (availability.available) {
+                          return (
+                            <div className="flex flex-col items-end">
+                              <span className="text-green-600 font-medium">
+                                {availability.currentStock}
+                              </span>
+                              <span className="text-xs text-gray-500">
+                                {availability.currentStock >= item.quantity ? 'Available' : 'Partial'}
+                              </span>
+                            </div>
+                          );
+                        } else if (availability.inventoryItem) {
+                          return (
+                            <div className="flex flex-col items-end">
+                              <span className="text-red-600 font-medium">0</span>
+                              <span className="text-xs text-red-500">Out of Stock</span>
+                            </div>
+                          );
+                        } else {
+                          return (
+                            <div className="flex flex-col items-end">
+                              <span className="text-gray-400">-</span>
+                              <span className="text-xs text-gray-400">Not Tracked</span>
+                            </div>
+                          );
+                        }
+                      })()}
                     </td>
                     <td className="px-3 py-1 text-xs text-right text-gray-900 leading-tight">
                       {renderEditableCell(item, 'unitCost', item.unitCost, 'text-right')}
@@ -3638,7 +2922,7 @@ const BOMManager = () => {
                 {/* Empty state */}
                 {filteredData.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="px-3 py-12 text-center">
+                    <td colSpan={10} className="px-3 py-12 text-center">
                       <div className="flex flex-col items-center space-y-3">
                         <Package size={48} className="text-gray-300" />
                         <div className="text-gray-500">
@@ -3659,7 +2943,7 @@ const BOMManager = () => {
                 
                 <tr className="bg-gray-100 font-semibold border-t-2 border-gray-300">
                   <td></td>
-                  <td colSpan={5} className="px-3 py-1.5 text-xs text-gray-900">TOTAL</td>
+                  <td colSpan={6} className="px-3 py-1.5 text-xs text-gray-900">TOTAL</td>
                   <td className="px-3 py-1.5 text-sm text-right font-bold text-gray-900">
                     ${totalCost.toFixed(2)}
                   </td>
@@ -3675,10 +2959,12 @@ const BOMManager = () => {
           <h4 className="font-semibold text-gray-900 mb-2">📋 System Information</h4>
           <div className="text-sm text-gray-700 space-y-1">
             <p>• <strong>Click to Edit:</strong> Click any cell to edit values directly</p>
+            <p>• <strong>Inventory Integration:</strong> Real-time stock levels from Firebase inventory</p>
+            <p className="text-xs text-green-600 ml-4">📦 Green = Available, Red = Out of Stock, Gray = Not Tracked</p>
+            <p>• <strong>Auto-Population:</strong> Part numbers from inventory auto-fill description and cost</p>
             <p>• <strong>Dynamic Dropdowns:</strong> Categories and suppliers auto-update from your data</p>
             <p>• <strong>Smart Suggestions:</strong> System learns your naming patterns and preferences</p>
-            <p>• <strong>Storage:</strong> Data saved locally in browser (no server required)</p>
-            <p className="text-xs text-blue-600 ml-4">📌 SharePoint Integration coming soon!</p>
+            <p>• <strong>Firebase Storage:</strong> Data synced to cloud database for reliability</p>
             <p>• <strong>Export/Import:</strong> JSON format for data sharing and backup</p>
             <p>• <strong>DigiKey Integration:</strong> CSV export and direct product links</p>
             <p>• <strong>EasyEDA Integration:</strong> Component search, library access, and BOM export</p>
@@ -3695,6 +2981,7 @@ const BOMManager = () => {
         onSaveBOM={handleSaveBOM}
         currentBOMId={currentBOMId}
         currentBOMData={bomData}
+        BOMStorage={BOMStorage}
       />
       
       <NLPAddDialog

@@ -19,7 +19,7 @@ import {
 import { db } from '../config/firebase';
 
 export interface BOMItem {
-  id?: string;
+  id?: string | number;
   partNumber: string;
   description: string;
   quantity: number;
@@ -37,6 +37,10 @@ export interface BOMItem {
   createdAt?: Date;
   updatedAt?: Date;
   fromInventory?: boolean;
+  nlpParsed?: boolean;
+  confidence?: number;
+  originalInput?: string;
+  inventoryValidated?: boolean;
   specifications?: {
     voltage?: string;
     current?: string;
@@ -254,7 +258,7 @@ export class HybridFirebaseBOMService {
     }
   }
 
-  async createBOMTemplate(name: string, description: string, parts: BOMItem[]): Promise<string> {
+  async createBOMTemplate(name: string, description: string, parts: BOMItem[], customId?: string): Promise<string> {
     try {
       const totalEstimatedCost = parts.reduce((sum, part) => sum + (part.extendedCost || 0), 0);
       
@@ -270,9 +274,19 @@ export class HybridFirebaseBOMService {
         createdBy: 'bom-generator'
       };
 
-      const docRef = await addDoc(collection(db, 'bom_templates'), bomTemplate);
-      console.log(`💾 Created BOM template: ${name} with ID: ${docRef.id}`);
-      return docRef.id;
+      let docRef;
+      if (customId) {
+        // Use custom ID if provided
+        docRef = doc(db, 'bom_templates', customId);
+        await setDoc(docRef, bomTemplate);
+        console.log(`💾 Created BOM template: ${name} with custom ID: ${customId}`);
+        return customId;
+      } else {
+        // Let Firebase generate ID
+        docRef = await addDoc(collection(db, 'bom_templates'), bomTemplate);
+        console.log(`💾 Created BOM template: ${name} with ID: ${docRef.id}`);
+        return docRef.id;
+      }
     } catch (error) {
       console.error(`❌ Error creating BOM template ${name}:`, error);
       throw error;
@@ -367,8 +381,22 @@ export class HybridFirebaseBOMService {
   // Legacy methods for backward compatibility
   async saveBOM(items: BOMItem[]): Promise<void> {
     console.log('💾 Saving BOM to Firebase:', items.length, 'items');
-    // This would typically create a new BOM template
-    // For now, we'll just log the action
+    // Create a new BOM template with a default name
+    const timestamp = new Date().toISOString().split('T')[0];
+    const name = `BOM_${timestamp}_${Date.now()}`;
+    await this.createBOMTemplate(name, 'BOM saved from generator', items);
+  }
+
+  // Save named BOM method
+  async saveNamedBOM(name: string, description: string, items: BOMItem[], customId?: string): Promise<string> {
+    console.log('💾 Saving named BOM to Firebase:', name, 'with', items.length, 'items', customId ? `(custom ID: ${customId})` : '');
+    return await this.createBOMTemplate(name, description, items, customId);
+  }
+
+  // Update existing BOM method
+  async updateNamedBOM(bomId: string, items: BOMItem[]): Promise<void> {
+    console.log('📝 Updating named BOM in Firebase:', bomId, 'with', items.length, 'items');
+    await this.updateBOMTemplate(bomId, items);
   }
 
   async loadBOM(): Promise<BOMItem[]> {

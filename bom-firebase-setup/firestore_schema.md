@@ -3,6 +3,7 @@
 ## Collections Structure
 
 ### 1. `inventory_items` Collection
+
 **Document ID**: `{partNumber}` (e.g., "CT-IAS-001")
 
 ```javascript
@@ -24,6 +25,7 @@
 ```
 
 ### 2. `bom_templates` Collection
+
 **Document ID**: Auto-generated or custom (e.g., "product-a-bom-v1")
 
 ```javascript
@@ -55,6 +57,7 @@
 ```
 
 ### 3. `bom_executions` Collection
+
 **Document ID**: Auto-generated
 
 ```javascript
@@ -100,6 +103,7 @@
 ```
 
 ### 4. `audit_log` Collection
+
 **Document ID**: Auto-generated
 
 ```javascript
@@ -123,6 +127,7 @@
 ```
 
 ### 5. `configuration` Collection
+
 **Document ID**: Named configs (e.g., "system_settings")
 
 ```javascript
@@ -164,12 +169,14 @@
 ## Indexes to Create
 
 ### Composite Indexes
+
 1. **inventory_items**: `status`, `lastUpdated`
 2. **inventory_items**: `category`, `currentStock`
 3. **bom_executions**: `status`, `executedAt`
 4. **audit_log**: `action`, `timestamp`
 
 ### Single Field Indexes
+
 - All timestamp fields (`createdAt`, `updatedAt`, `executedAt`, `timestamp`)
 - `partNumber` fields
 - `status` fields
