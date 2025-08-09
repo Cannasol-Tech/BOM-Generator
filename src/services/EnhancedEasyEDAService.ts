@@ -42,7 +42,6 @@ export class EnhancedEasyEDAService {
   private baseUrl = 'https://easyeda.com';
   private oshwlabUrl = 'https://oshwlab.com';
   private lcscApiUrl = 'https://wmsc.lcsc.com/wmsc/product/list';
-  private componentCache = new Map<string, EasyEDAComponent[]>();
   private lcscCache = new Map<string, LCSCComponent[]>();
   private apiKey: string | null = null;
   private hasApiAccess = false;
@@ -66,7 +65,7 @@ export class EnhancedEasyEDAService {
     maxResults?: number;
     category?: string;
   } = {}): Promise<EasyEDAComponent[]> {
-    const { includeStock = true, includePricing = true, maxResults = 20 } = options;
+    const { maxResults = 20 } = options;
 
     try {
       // Search LCSC API first (more reliable and comprehensive)
