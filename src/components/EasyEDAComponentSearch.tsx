@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Search, ExternalLink, Package, DollarSign, Zap, Download } from 'lucide-react';
-import { EnhancedEasyEDAService } from '../services/EnhancedEasyEDAService';
+import { EnhancedEasyEDAService, EasyEDAComponent } from '../services/EnhancedEasyEDAService';
 
 interface ComponentSearchProps {
-  onComponentSelect?: (component: any) => void;
+  onComponentSelect?: (component: EasyEDAComponent) => void;
   searchQuery?: string;
 }
 
@@ -12,10 +12,10 @@ const EasyEDAComponentSearch: React.FC<ComponentSearchProps> = ({
   searchQuery: initialQuery = '' 
 }) => {
   const [searchQuery, setSearchQuery] = useState(initialQuery);
-  const [components, setComponents] = useState([]);
+  const [components, setComponents] = useState<EasyEDAComponent[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedComponent, setSelectedComponent] = useState(null);
+  const [selectedComponent, setSelectedComponent] = useState<EasyEDAComponent | null>(null);
   const [service] = useState(() => new EnhancedEasyEDAService());
 
   useEffect(() => {
@@ -256,7 +256,7 @@ const EasyEDAComponentSearch: React.FC<ComponentSearchProps> = ({
               Add to EasyEDA Schematic
             </a>
             <a
-              href={service.generateComponentUrls(selectedComponent).addToPCB}
+              href={selectedComponent ? service.generateComponentUrls(selectedComponent).addToPCB || '#' : '#'}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700"

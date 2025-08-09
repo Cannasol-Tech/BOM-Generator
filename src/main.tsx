@@ -1790,6 +1790,9 @@ const BOMManager = () => {
   
   // Firebase/n8n states
   const [firebaseConnected, setFirebaseConnected] = useState(false);
+  const [n8nConnected, setN8nConnected] = useState(false);
+  const [isLoadingFirebaseData, setIsLoadingFirebaseData] = useState(false);
+
 
   const [firebaseInventory, setFirebaseInventory] = useState<any[]>([]);
   const [savingToFirebase, setSavingToFirebase] = useState(false);
@@ -2596,6 +2599,11 @@ const BOMManager = () => {
             {currentBOMName && (
               <Badge variant="info" className="text-sm bg-green-100 text-green-800 border-green-300">
                 {currentBOMName}
+              </Badge>
+            )}
+            {isLoadingFirebaseData && (
+              <Badge variant="info" className="text-sm bg-blue-100 text-blue-800 border-blue-300">
+                Loading Firebase data...
               </Badge>
             )}
           </div>
