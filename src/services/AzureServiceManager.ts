@@ -62,7 +62,7 @@ export class AzureServiceManager {
     return [];
   }
 
-  async createBOMTumplate(name: string, description: string, parts: BOMMitem[], customId?: string): Promise<string> {
+  async createBOMTemplate(name: string, description: string, parts: BOMItem[], customId?: string): Promise<string> {
     const bomId = customId || `bom_${Date.now()}`;
     console.log(`✅ Created BOM template: ${name} (${bomId})`);
     return bomId;
