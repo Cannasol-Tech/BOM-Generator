@@ -3,7 +3,7 @@
  * Replaces HybridFirebaseBOMService with SQL-based operations
  */
 
-import { ConnectionPool, sql, config as SQLConfig } from;
+import { ConnectionPool, sql, config as SQLConfig } from 'mssql';
 import {
   AuditLog,
   BOMTemplate,
