@@ -3,7 +3,7 @@
  * Replaces HybridFirebaseBOMService with SQL-based operations
  */
 
-import { ConnectionPool, sql, config as SQLConfig } from 'mssql';
+import { ConnectionPool, sql, config as SQLConfig } from;
 import {
   AuditLog,
   BOMTemplate,
@@ -19,7 +19,7 @@ import {
   BOMTemplateWithParts,  
   BOMAvailabilityCheck,
   BOMExecutionWithDetails,
-  CreateBOMTemplateRequest
+  CreateBOMTemplateRequest,
   CreateInventoryItemRequest,
   UpdateInventoryStockRequest,
 } from '../types/azure-sql-types';
