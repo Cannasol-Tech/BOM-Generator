@@ -1,0 +1,35 @@
+# BOM Generator API Requirements
+
+# For Azure Static Web Apps Functions
+azure-functions>=1.11.0
+pyodbc>=4.0.0
+
+# For FastAPI (if using Container Apps instead)
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+
+# Database
+pyodbc==5.0.1
+aioodbc==0.4.0
+
+# Authentication & Security
+python-jose[cryptography]==3.3.0
+python-multipart==0.0.6
+passlib[bcrypt]==1.7.4
+
+# Data validation
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# Azure SDK
+azure-identity==1.15.0
+azure-keyvault-secrets==4.7.0
+
+# Utilities
+python-dotenv==1.0.0
+structlog==23.2.0
+
+# Development
+pytest==7.4.3
+pytest-asyncio==0.21.1
+httpx==0.25.2

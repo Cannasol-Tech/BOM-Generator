@@ -1,0 +1,20 @@
+# Azure SQL BOM Service Python Dependencies
+# Core database connectivity
+pyodbc>=4.0.39
+aioodbc>=0.4.0
+
+# Azure SDK
+azure-identity>=1.15.0
+azure-keyvault-secrets>=4.7.0
+
+# Data validation and serialization
+pydantic>=2.5.0
+
+# Optional: For enhanced async capabilities
+asyncio-throttle>=1.0.2
+
+# Development dependencies (optional)
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+black>=23.0.0
+mypy>=1.7.0

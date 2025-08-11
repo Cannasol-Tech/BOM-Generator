@@ -1,4 +1,4 @@
-# ðŸ˜‚ IMPLEMENTED VS" TESTED
+# Azure Migration Status: IMPLEMENTED VS TESTED
 
 This document recaps what's implemented vs what's tested in the Azure migration, and what's next.
 
@@ -7,7 +7,7 @@ This document recaps what's implemented vs what's tested in the Azure migration,
   - Implemented: Yes / Tested: Dev health, auto-detection & status panel
 - CSV Inventory Service (aligned to your existing structure)
   - Implemented: Yes / Tested: Dev (test items search/categories/counts)
-- LocalStorage&è¶bOM Service (MIGRATION MODE)
+- LocalStorage&ï¿½bOM Service (MIGRATION MODE)
   - Implemented: Yes / Tested: Dev (BRUN, SAVE, LOAD) TEMPLATES)
 - Azure AD B2C (MSAL)
   - Implemented: Service setup + config wiring / Tested: Pending (tenant/clientId needed)
